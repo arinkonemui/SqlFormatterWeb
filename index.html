@@ -399,15 +399,59 @@
       v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addCondRow(); }});
       r.appendChild(f); r.appendChild(o); r.appendChild(v); r.appendChild(mkDelBtn()); condsGrid.appendChild(r); f.focus();
     }
+
+    // function addJoinRow(){
+    //   const r = document.createElement('div'); r.className='row';
+    //   const t = document.createElement('select');
+    //   ['INNER JOIN','LEFT OUTER JOIN','RIGHT OUTER JOIN','FULL OUTER JOIN'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; t.appendChild(o); });
+    //   const table = document.createElement('input'); table.type='text'; table.placeholder='結合先テーブル（例：orders）';
+    //   const onL = document.createElement('input'); onL.type='text'; onL.placeholder='ON 左側（例：users.id）';
+    //   const onOp = document.createElement('select'); ['=','!=','>','<','>=','<='].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; onOp.appendChild(o); });
+    //   const onR = document.createElement('input'); onR.type='text'; onR.placeholder='ON 右側（例：orders.user_id）';
+    //   r.appendChild(t); r.appendChild(table); r.appendChild(onL); r.appendChild(onOp); r.appendChild(onR); r.appendChild(mkDelBtn()); joinsGrid.appendChild(r);
+    // }
+
+    // JOIN の ON 条件 1 行を追加
+    function addJoinCondRow(block, {l='', op='=', r=''}={}) {
+      const conds = block.querySelector('.join-conds');
+      const row = document.createElement('div');
+      row.className = 'row join-cond-row';
+      const onL = document.createElement('input'); onL.type='text'; onL.placeholder='ON 左側（例：users.id）'; onL.value=l; onL.className='join-on-left';
+      const onOp = document.createElement('select'); onOp.className='join-on-op';
+      ['=','!=','>','<','>=','<='].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; onOp.appendChild(o); });
+      onOp.value = op;
+      const onR = document.createElement('input'); onR.type='text'; onR.placeholder='ON 右側（例：orders.user_id）'; onR.value=r; onR.className='join-on-right';
+      row.appendChild(onL); row.appendChild(onOp); row.appendChild(onR); row.appendChild(mkDelBtn());
+      conds.appendChild(row);
+      onL.focus();
+    }
+    // JOIN ブロック全体を追加（ヘッダ：JOIN種別/テーブル + 条件リスト）
     function addJoinRow(){
-      const r = document.createElement('div'); r.className='row';
-      const t = document.createElement('select');
-      ['INNER JOIN','LEFT OUTER JOIN','RIGHT OUTER JOIN','FULL OUTER JOIN'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; t.appendChild(o); });
-      const table = document.createElement('input'); table.type='text'; table.placeholder='結合先テーブル（例：orders）';
-      const onL = document.createElement('input'); onL.type='text'; onL.placeholder='ON 左側（例：users.id）';
-      const onOp = document.createElement('select'); ['=','!=','>','<','>=','<='].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; onOp.appendChild(o); });
-      const onR = document.createElement('input'); onR.type='text'; onR.placeholder='ON 右側（例：orders.user_id）';
-      r.appendChild(t); r.appendChild(table); r.appendChild(onL); r.appendChild(onOp); r.appendChild(onR); r.appendChild(mkDelBtn()); joinsGrid.appendChild(r);
+      const block = document.createElement('div');
+      block.className = 'card';
+      block.style.padding = '10px';
+      block.style.background = '#0b1220';
+      block.style.border = '1px solid #243045';
+      block.classList.add('join-block');
+
+      const head = document.createElement('div'); head.className='row';
+      const jtSel = document.createElement('select'); jtSel.className='join-type';
+      ['INNER JOIN','LEFT OUTER JOIN','RIGHT OUTER JOIN','FULL OUTER JOIN'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; jtSel.appendChild(o); });
+      const table = document.createElement('input'); table.type='text'; table.placeholder='結合先テーブル（例：orders）'; table.className='join-table';
+      const addCondBtn = document.createElement('button'); addCondBtn.className='btn small'; addCondBtn.textContent='＋ 条件を追加';
+      const delJoinBtn = mkDelBtn();
+      head.appendChild(jtSel); head.appendChild(table); head.appendChild(addCondBtn); head.appendChild(delJoinBtn);
+
+      const conds = document.createElement('div'); conds.className='vstack join-conds'; conds.style.marginTop='6px';
+
+      block.appendChild(head);
+      block.appendChild(conds);
+      joinsGrid.appendChild(block);
+
+      // 初期で1行用意
+      addJoinCondRow(block);
+      // 追加ボタン
+      addCondBtn.addEventListener('click', ()=> addJoinCondRow(block));
     }
 
     // INSERTエリア UI
