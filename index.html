@@ -429,16 +429,38 @@
       const o = document.createElement('select'); o.className='cond-op';
       ['=','!=','>','<','>=','<=','LIKE','IN','IS NULL','IS NOT NULL'].forEach(v=>{ const opt=document.createElement('option'); opt.value=v; opt.textContent=v; o.appendChild(opt); });
       o.value=op;
-      const v = document.createElement('input'); v.type='text'; v.placeholder="値（例：'2025-01-01' / ('A','B'))"; v.value=value; v.className='cond-val';
-      // IS NULL / IS NOT NULL のときは値入力を無効化
-      const adjustValState = ()=>{ const noVal = (o.value==='IS NULL' || o.value==='IS NOT NULL'); v.disabled = noVal; if(noVal) v.value=''; };
-      o.addEventListener('change', adjustValState); adjustValState();
-      // Enter で同じコンテナに次行を追加
-      v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addCondRow(target); }});
+
+      // 値入力はラッパー内に動的生成（IS NULL/IS NOT NULL のときは要素ごと削除）
+      const valWrap = document.createElement('span'); valWrap.className='cond-val-wrap';
+      let v = null; // 現在の値入力 input 参照
+      const createValueInput = ()=>{
+        if (v) return;
+        v = document.createElement('input');
+        v.type='text';
+        v.placeholder="値（例：'2025-01-01' / ('A','B'))";
+        v.value = value;
+        v.className='cond-val';
+        v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addCondRow(target); }});
+        valWrap.appendChild(v);
+      };
+      const removeValueInput = ()=>{
+        if (!v) return;
+        v.remove();
+        v = null;
+      };
+      const onOpChange = ()=>{
+        const noVal = (o.value==='IS NULL' || o.value==='IS NOT NULL');
+        if (noVal){ removeValueInput(); }
+        else { createValueInput(); }
+      };
+      o.addEventListener('change', onOpChange);
+      // 初期表示（既定opに応じて生成/削除）
+      onOpChange();
+
       // 行削除
       const del = document.createElement('button'); del.className='btn small'; del.textContent='－ 削除';
       del.addEventListener('click', ()=>{ r.remove(); refreshCondConnectors(target); });
-      r.appendChild(connSel); r.appendChild(f); r.appendChild(o); r.appendChild(v); r.appendChild(del);
+      r.appendChild(connSel); r.appendChild(f); r.appendChild(o); r.appendChild(valWrap); r.appendChild(del)
       target.appendChild(r);
       refreshCondConnectors(target);
       f.focus();
