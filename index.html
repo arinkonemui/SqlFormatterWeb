@@ -232,11 +232,38 @@
   <script>
     const $ = (s)=>document.querySelector(s);
     const input = $('#input'), output = $('#output');
-    //const dialect = $('#dialect'), indent = $('#indent'), uppercase = $('#uppercase');
-      const dialect = $('#dialect'), indent = $('#indent'), uppercase = $('#uppercase');
+    const dialect = $('#dialect'), indent = $('#indent'), uppercase = $('#uppercase');
+
+    // ---- 事前クリーンアップ：セミコロンや行内コメントの直後に改行を入れる等（ON関連は撤去）
+    function preprocessSql(raw) {
+      if (!raw) return '';
+      let s = raw.replace(/\r\n?/g, '\n');        // 改行を \n に統一
+      s = s.replace(/\u3000/g, ' ');              // 全角スペース → 半角
+      s = s.replace(/\t+/g, ' ');                 // タブは空白に
+      // ; の直後に主要キーワードが続くなら改行を挿入（例: "; WITH", "; SELECT"...）
+      s = s.replace(/;[ \t]*(?=\b(WITH|SELECT|INSERT|UPDATE|DELETE|DECLARE|CREATE|ALTER|DROP|MERGE)\b)/gi, ';\n');
+      // 行内コメント "-- …" の直後に主要キーワードが続くなら改行を入れる
+      s = s.replace(
+        /(--[^\n]*?)[ \t]+(?=\b(WITH|SELECT|INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|UNION|EXCEPT|INTERSECT|ORDER|GROUP|HAVING|LIMIT|OFFSET)\b)/gi,
+        '$1\n'
+      );
+      // 同一行に "… ) ORDER|GROUP|HAVING" があれば見やすさのために改行（保守的）
+      s = s.replace(/([^\n;])\s+(?=\b(ORDER|GROUP|HAVING)\b)/gi, '$1\n');
+      // 連続空行は1つに
+      s = s.replace(/\n{3,}/g, '\n\n');
+      return s;
+    }
+
+    // ---- 未完了（括弧）チェック：開き > 閉じ なら未完了と見なす
+    function hasUnbalancedParens(str) {
+      try {
+        const opens = (str.match(/\(/g) || []).length;
+        const closes = (str.match(/\)/g) || []).length;
+        return opens > closes;
+      } catch { return false; }
+    }
 
     // --- 方言の保存/復元 ---
-    // 直近で使った方言を記憶
     const SAVED_KEY = 'sqlfmt.dialect';
     const saved = localStorage.getItem(SAVED_KEY);
     if (saved && $('#dialect')) { $('#dialect').value = saved; }
@@ -265,41 +292,45 @@
 
     function formatNow(){
       const sql = input.value || '';
+      const pre = preprocessSql(sql);
+      // カッコ未完了なら整形せず警告
+      if (hasUnbalancedParens(pre)) {
+        output.textContent = 'SQL が未完了です。（カッコ閉じ忘れ等）';
+        return;
+      }
       const baseOpt = {
         // インデント幅（半角スペース数）
         tabWidth: Math.max(2, Math.min(8, Number(indent.value) || 2)),
         // キーワードの大文字化
         keywordCase: uppercase.checked ? 'upper' : 'preserve',
+        // 複数ステートメントの間に空行（見やすさ向上）
+        linesBetweenQueries: 1,
       };
       const primary = dialect.value;
       try {
-        const res = window.sqlFormatter.format(sql, { ...baseOpt, language: primary });
-        output.textContent = res;
+        const res = window.sqlFormatter.format(pre, { ...baseOpt, language: primary });
+        output.textContent = res; // 後処理は撤去（ON改行を諦める方針）
         return;
       } catch (e1) {
         // 自動判定して再試行
-        const guess = detectDialect(sql);
+        const guess = detectDialect(pre);
         if (guess && guess !== primary) {
           try {
-            const res2 = window.sqlFormatter.format(sql, { ...baseOpt, language: guess });
+            const res2 = window.sqlFormatter.format(pre, { ...baseOpt, language: guess });
             output.textContent = res2;
-            // UIも推測方言に合わせ、次回以降はこれを使う
             if ($('#dialect')) {
               $('#dialect').value = guess;
               localStorage.setItem(SAVED_KEY, guess);
             }
-            // ヒントを末尾に軽く表示（邪魔しないテキスト）
             output.textContent += `\n\n/* note: 方言を自動推測して "${guess}" で整形しました */`;
             return;
-          } catch (e2) {
-            // 次の候補群でも順に試す
-          }
+          } catch (e2) { /* 次の候補へ */ }
         }
         // それでも失敗 → 複数候補を試す
         const fallback = ['postgresql','mysql','sqlite','tsql'].filter(x => x !== primary && x !== guess);
         for (const lang of fallback) {
           try {
-            const res3 = window.sqlFormatter.format(sql, { ...baseOpt, language: lang });
+            const res3 = window.sqlFormatter.format(pre, { ...baseOpt, language: lang });
             output.textContent = res3 + `\n\n/* note: 自動試行で "${lang}" 方言にフォールバック */`;
             if ($('#dialect')) {
               $('#dialect').value = lang;
@@ -382,7 +413,7 @@
     // INSERTエリア UI
     const insGrid = $('#insGrid');
     function addInsRow(){ // col + val
-      const r = document.createElement('div'); r.className='row';
+      const r = document.createElement('div'); r.className = 'row';
       const c = document.createElement('input'); c.type='text'; c.placeholder='列名（例：name）';
       const v = document.createElement('input'); v.type='text'; v.placeholder="値（例：'Alice' / 123 / NOW()）";
       v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addInsRow(); }});
@@ -409,7 +440,7 @@
     function addDefRow(){
       const r = document.createElement('div'); r.className='row';
       const name = document.createElement('input'); name.type='text'; name.placeholder='列名（例：id）';
-      const type = document.createElement('input'); type.type='text'; type.placeholder='型（例：INT / VARCHAR(255)）';
+      const type = document.createElement('input'); type.type='text'; type.placeholder='型（例：INT / VARCHAR(255））';
       const nullable = document.createElement('select'); ['NOT NULL','NULL'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; nullable.appendChild(o); });
       const def = document.createElement('input'); def.type='text'; def.placeholder="DEFAULT（例：0 / 'N/A' / CURRENT_TIMESTAMP）";
       const pk = document.createElement('select'); ['','PRIMARY KEY'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v||'（PKなし）'; pk.appendChild(o); });
@@ -437,7 +468,6 @@
       area_insert.style.display = (op==='insert')?'flex':'none';
       area_update.style.display = (op==='update')?'flex':'none';
       area_create.style.display = (op==='create')?'flex':'none';
-      // テーブル名は全OPで使うが、CREATE時のみ「新規作成テーブル」と認識
       $('#row_table').style.display = (op==='create' || op==='select' || op==='insert' || op==='update') ? 'flex' : 'none';
     }
     opSel.addEventListener('change', updateOpView);
@@ -465,7 +495,6 @@
     $('#b_make').addEventListener('click', ()=>{
       const op = opSel.value;
       const table = ($('#b_table').value||'').trim();
-      // 共通でテーブル必須（select/insert/update/create）
       if(!table){ alert('テーブル名を入力してください'); return; }
 
       let sql = '';
