@@ -21,11 +21,16 @@
     .btn{background:#0b1220;border:1px solid #334155;color:var(--fg);padding:10px 14px;border-radius:10px;cursor:pointer}
     .btn:hover{border-color:#475569}
     .btn.primary{border-color:#0ea5b7;background:linear-gradient(180deg,#0ea5b7,#0b7782);font-weight:700}
+    .btn.small{padding:6px 10px;border-radius:8px}
     .muted{color:var(--muted);font-size:13px}
     .footer{margin-top:18px;color:#9ca3af;font-size:12px}
     .badge{display:inline-block;padding:2px 8px;border:1px solid #334155;border-radius:999px;font-size:12px;color:#cbd5e1}
+    .vstack{display:flex;flex-direction:column;gap:10px}
+    .pill{display:inline-flex;align-items:center;gap:8px}
+    .hint{font-size:12px;color:#a1a1aa}
+    .danger{border-color:#ef4444 !important;color:#fecaca !important}
   </style>
-  <!-- sql-formatter（UMD）※バージョン固定も可：@15 など -->
+  <!-- sql-formatter（UMD） -->
   <script src="https://unpkg.com/sql-formatter/dist/sql-formatter.min.js"></script>
 </head>
 <body>
@@ -50,7 +55,7 @@
         <label>インデント
           <input id="indent" type="number" min="2" max="8" step="1" value="2" />
         </label>
-        <label><input id="uppercase" type="checkbox" /> キーワードを大文字に</label>
+        <label class="pill"><input id="uppercase" type="checkbox" /> キーワードを大文字に</label>
 
         <button class="btn primary" id="formatBtn">整形</button>
         <button class="btn" id="minifyBtn">ミニファイ</button>
@@ -58,30 +63,55 @@
         <button class="btn" id="clearBtn">クリア</button>
       </div>
 
-      <!-- ▼ 追加：タブ切替（整形 / 作成） -->
+      <!-- タブ切替 -->
       <div class="row" style="margin-top:8px">
         <button class="btn" id="tabFormat">整形ツール</button>
-        <button class="btn" id="tabBuilder">SQL作成（簡易）</button>
+        <button class="btn" id="tabBuilder">SQL作成</button>
       </div>
 
-      <!-- ▼ 追加：SQLビルダー（最小：SELECT） -->
+      <!-- SQLビルダー：複数行追加方式 -->
       <div id="builder" class="card" style="margin-top:12px; display:none">
+        <!-- テーブル名 -->
         <div class="row">
           <label>テーブル名 <input id="b_table" type="text" placeholder="users" /></label>
-          <label>カラム（,区切り） <input id="b_cols" type="text" placeholder="id, name, created_at" style="min-width:320px"/></label>
         </div>
-        <div class="row">
-          <label>条件（WHERE）
-            <input id="b_where" type="text" placeholder="status = 'active' AND created_at >= '2025-01-01'" style="min-width:420px"/>
-          </label>
+
+        <!-- カラム複数 -->
+        <div style="margin-top:6px">
+          <div class="row" style="justify-content:space-between">
+            <div class="muted">カラム（複数可）</div>
+            <div class="hint">空欄は無視／Enterで追加</div>
+          </div>
+          <div id="colsGrid" class="vstack" style="margin-top:6px"></div>
+          <div class="row" style="margin-top:6px">
+            <button class="btn small" id="addCol">＋ カラムを追加</button>
+          </div>
         </div>
-        <div class="row">
+
+        <!-- 条件複数 -->
+        <div style="margin-top:12px">
+          <div class="row" style="justify-content:space-between">
+            <div class="muted">条件（WHERE：複数可／AND結合）</div>
+            <div class="hint">例：created_at >= '2025-01-01'</div>
+          </div>
+          <div id="condsGrid" class="vstack" style="margin-top:6px"></div>
+          <div class="row" style="margin-top:6px">
+            <button class="btn small" id="addCond">＋ 条件を追加</button>
+          </div>
+        </div>
+
+        <!-- 並び順・件数 -->
+        <div class="row" style="margin-top:12px">
           <label>並び順（ORDER BY） <input id="b_order" type="text" placeholder="created_at DESC"/></label>
           <label>件数（LIMIT） <input id="b_limit" type="number" min="1" placeholder="100" style="width:100px"/></label>
         </div>
-        <div class="row">
+
+        <!-- 生成 -->
+        <div class="row" style="margin-top:8px">
           <button class="btn primary" id="b_make">SQLを作る → 入力に反映</button>
+          <button class="btn danger small" id="b_clear">ビルダー入力をクリア</button>
         </div>
+
         <div class="muted" style="margin-top:8px">
           ※本機能は生成補助です。SQLの妥当性はご自身でご確認ください。
         </div>
@@ -109,9 +139,8 @@
       このサイトは入力内容をサーバに送信しません。ブラウザ内でのみ処理します。広告を表示する場合、第三者のCookie等が利用されることがあります。
     </div>
 
-    <!-- 広告（後で差し込み）：AdSense 自動広告 or レスポンシブ広告ユニット -->
+    <!-- 広告（後で差し込み） -->
     <!-- 例：<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXX" crossorigin="anonymous"></script> -->
-
   </div>
 
   <script>
@@ -124,9 +153,7 @@
         const sql = input.value || '';
         const opt = {
           language: dialect.value,
-          // インデント幅（半角スペース数）
           tabWidth: Math.max(2, Math.min(8, Number(indent.value) || 2)),
-          // キーワードの大文字化
           keywordCase: uppercase.checked ? 'upper' : 'preserve',
         };
         const res = window.sqlFormatter.format(sql, opt);
@@ -138,13 +165,12 @@
 
     function minifyNow(){
       const sql = input.value || '';
-      // 超簡易ミニファイ（コメント/空白を潰す）。必要に応じて強化。
       const noComments = sql.replace(/--.*?$|\/\*[\s\S]*?\*\//gm,'');
       const mini = noComments.replace(/\s+/g,' ').trim();
       output.textContent = mini;
     }
 
-    // ボタン類
+    // ツールバー
     $('#formatBtn').addEventListener('click', formatNow);
     $('#minifyBtn').addEventListener('click', minifyNow);
     $('#copyBtn').addEventListener('click', async ()=>{
@@ -156,38 +182,138 @@
       input.value=''; output.textContent='';
     });
 
-    // ▼ 追加：タブ切替とビルダー連携
-    const tabFormat = document.querySelector('#tabFormat');
-    const tabBuilder = document.querySelector('#tabBuilder');
-    const builder = document.querySelector('#builder');
-
+    // タブ切替
+    const tabFormat = $('#tabFormat');
+    const tabBuilder = $('#tabBuilder');
+    const builder = $('#builder');
     if (tabFormat && tabBuilder && builder) {
       tabFormat.addEventListener('click', () => { builder.style.display = 'none'; window.scrollTo({top:0,behavior:'smooth'}); });
       tabBuilder.addEventListener('click', () => { builder.style.display = 'block'; builder.scrollIntoView({behavior:'smooth'}); });
     }
-    const bMake = document.querySelector('#b_make');
-    if (bMake) {
-      bMake.addEventListener('click', () => {
-        const table = (document.querySelector('#b_table').value || '').trim();
-        const cols  = (document.querySelector('#b_cols').value  || '*').trim();
-        const where = (document.querySelector('#b_where').value || '').trim();
-        const order = (document.querySelector('#b_order').value || '').trim();
-        const limit = (document.querySelector('#b_limit').value || '').trim();
 
-        if (!table) { alert('テーブル名を入力してください'); return; }
+    // ====== ビルダー（＋で行追加） ======
+    const colsGrid = $('#colsGrid');
+    const condsGrid = $('#condsGrid');
+    const addColBtn = $('#addCol');
+    const addCondBtn = $('#addCond');
+    const clearBuilderBtn = $('#b_clear');
 
-        let sql = `SELECT ${cols || '*'}\nFROM ${table}`;
-        if (where) sql += `\nWHERE ${where}`;
-        if (order) sql += `\nORDER BY ${order}`;
-        if (limit) sql += `\nLIMIT ${limit}`;
-
-        input.value = sql;
-        formatNow();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+    function mkDelBtn(){
+      const btn = document.createElement('button');
+      btn.className = 'btn small';
+      btn.textContent = '－ 削除';
+      btn.addEventListener('click', (e)=> {
+        const row = e.target.closest('.grid > *') || e.target.parentElement;
+        row?.remove();
       });
+      return btn;
     }
 
-    // 初期表示：サンプルを整形
+    function addColRow(val=''){
+      const wrap = document.createElement('div');
+      wrap.style.display = 'grid';
+      wrap.style.gridTemplateColumns = '1fr auto';
+      wrap.style.gap = '10px';
+      wrap.style.alignItems = 'center';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.placeholder = 'id  または  users.id AS user_id';
+      inp.value = val;
+      inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter') { addColRow(); }});
+      const del = mkDelBtn();
+      wrap.appendChild(inp);
+      wrap.appendChild(del);
+      colsGrid.appendChild(wrap);
+      inp.focus();
+    }
+
+    function addCondRow({field='',op='=',value=''}={}){
+      const wrap = document.createElement('div');
+      wrap.style.display = 'grid';
+      wrap.style.gridTemplateColumns = '1fr 140px 1fr auto';
+      wrap.style.gap = '10px';
+      wrap.style.alignItems = 'center';
+
+
+      const f = document.createElement('input');
+      f.type='text'; f.placeholder='フィールド（例：created_at）'; f.value=field;
+
+      const o = document.createElement('select');
+      ['=','!=','>','<','>=','<=','LIKE','IN','IS NULL','IS NOT NULL'].forEach(v=>{
+        const opt=document.createElement('option'); opt.value=v; opt.textContent=v; o.appendChild(opt);
+      });
+      o.value = op;
+
+      const v = document.createElement('input');
+      v.type='text'; v.placeholder="値（例：'2025-01-01'  /  ('A','B')）"; v.value=value;
+
+      // Enterで次行を追加（値欄）
+      v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addCondRow(); } });
+
+      const del = mkDelBtn();
+
+      wrap.appendChild(f); wrap.appendChild(o); wrap.appendChild(v); wrap.appendChild(del);
+      condsGrid.appendChild(wrap);
+      f.focus();
+    }
+
+    addColBtn.addEventListener('click', ()=> addColRow());
+    addCondBtn.addEventListener('click', ()=> addCondRow());
+    clearBuilderBtn.addEventListener('click', ()=>{
+      $('#b_table').value = '';
+      $('#b_order').value = '';
+      $('#b_limit').value = '';
+      colsGrid.innerHTML = '';
+      condsGrid.innerHTML = '';
+      addColRow(); addCondRow();
+    });
+
+    // 初期行
+    addColRow('*');
+    addCondRow();
+
+    // 生成 → 入力へ反映
+    $('#b_make').addEventListener('click', ()=>{
+      const table = ($('#b_table').value||'').trim();
+      if(!table){ alert('テーブル名を入力してください'); return; }
+
+      const cols = [...colsGrid.querySelectorAll('input[type="text"]')]
+        .map(i=> (i.value||'').trim())
+        .filter(Boolean);
+
+      const conds = [...condsGrid.children].map(row=>{
+        const [f,o,v] = row.querySelectorAll('input,select');
+        const field = (f?.value||'').trim();
+        const op = (o?.value||'').trim();
+        let val = (v?.value||'').trim();
+
+        if (!field) return '';
+        // IN の最小補助：カンマ区切りっぽいが括弧が無ければ括弧で包む
+        if (op === 'IN' && val && !/^\(.*\)$/.test(val)) {
+          const parts = val.split(',').map(s=>s.trim()).filter(Boolean);
+          if (parts.length > 1) { val = '(' + parts.join(', ') + ')'; }
+        }
+        // IS NULL 系は値を出さない
+        if (op === 'IS NULL' || op === 'IS NOT NULL') return `${field} ${op}`;
+        // 値が空なら無視
+        if (!val) return '';
+        return `${field} ${op} ${val}`;
+      }).filter(Boolean);
+
+      const colsSql = cols.length ? cols.join(', ') : '*';
+      let sql = `SELECT ${colsSql}\nFROM ${table}`;
+      if (conds.length) sql += `\nWHERE ${conds.join('\n  AND ')}`;
+      const order = ($('#b_order').value||'').trim();
+      const limit = ($('#b_limit').value||'').trim();
+      if (order) sql += `\nORDER BY ${order}`;
+      if (limit) sql += `\nLIMIT ${limit}`;
+
+      input.value = sql;
+      formatNow();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // 初期表示：サンプル整形
     formatNow();
   </script>
 </body>
