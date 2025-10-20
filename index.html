@@ -87,7 +87,7 @@
           </label>
         </div>
 
-        <!-- 共通：テーブル名（必要なOPだけ表示） -->
+        <!-- 共通：テーブル名 -->
         <div class="row" id="row_table">
           <label>テーブル名 <input id="b_table" type="text" placeholder="users" /></label>
         </div>
@@ -110,7 +110,7 @@
           <div>
             <div class="row" style="justify-content:space-between">
               <div class="muted">JOIN（複数可）</div>
-              <div class="hint">ON は「左側」「演算子」「右側」で指定</div>
+              <div class="hint">ON は「左側」「演算子」「右側」を1行として追加。2行目以降は先頭で AND/OR を選択。</div>
             </div>
             <div id="joinsGrid" class="vstack" style="margin-top:6px"></div>
             <div class="row" style="margin-top:6px">
@@ -127,6 +127,8 @@
             <div id="condsGrid" class="vstack" style="margin-top:6px"></div>
             <div class="row" style="margin-top:6px">
               <button class="btn small" id="addCond">＋ 条件を追加</button>
+              <button class="btn small" id="addCondGroupStart">（ 開始</button>
+              <button class="btn small" id="addCondGroupEnd">） 終了</button>
             </div>
           </div>
 
@@ -179,6 +181,8 @@
             <div id="uCondsGrid" class="vstack" style="margin-top:6px"></div>
             <div class="row" style="margin-top:6px">
               <button class="btn small" id="addUCond">＋ 条件を追加</button>
+              <button class="btn small" id="addUCondGroupStart">（ 開始</button>
+              <button class="btn small" id="addUCondGroupEnd">） 終了</button>
             </div>
           </div>
         </div>
@@ -234,13 +238,13 @@
     const input = $('#input'), output = $('#output');
     const dialect = $('#dialect'), indent = $('#indent'), uppercase = $('#uppercase');
 
-    // ---- 事前クリーンアップ：セミコロンや行内コメントの直後に改行を入れる等（ON関連は撤去）
+    // ---- 事前クリーンアップ（ON関連は撤去）
     function preprocessSql(raw) {
       if (!raw) return '';
       let s = raw.replace(/\r\n?/g, '\n');        // 改行を \n に統一
       s = s.replace(/\u3000/g, ' ');              // 全角スペース → 半角
       s = s.replace(/\t+/g, ' ');                 // タブは空白に
-      // ; の直後に主要キーワードが続くなら改行を挿入（例: "; WITH", "; SELECT"...）
+      // ; の直後に主要キーワードが続くなら改行を挿入
       s = s.replace(/;[ \t]*(?=\b(WITH|SELECT|INSERT|UPDATE|DELETE|DECLARE|CREATE|ALTER|DROP|MERGE)\b)/gi, ';\n');
       // 行内コメント "-- …" の直後に主要キーワードが続くなら改行を入れる
       s = s.replace(
@@ -254,7 +258,7 @@
       return s;
     }
 
-    // ---- 未完了（括弧）チェック：開き > 閉じ なら未完了と見なす
+    // ---- 未完了（括弧）チェック：開き > 閉じ なら未完了
     function hasUnbalancedParens(str) {
       try {
         const opens = (str.match(/\(/g) || []).length;
@@ -271,48 +275,40 @@
       localStorage.setItem(SAVED_KEY, e.target.value);
     });
 
-    // --- 失敗時に方言を推測する ---
+    // --- 失敗時に方言を推測 ---
     function detectDialect(sql) {
       const s = sql;
-      // 強いシグナル
       if (/\bILIKE\b|SIMILAR\s+TO\b|::[a-z_]+\b|\bSERIAL\b|\bRETURNING\b/i.test(s)) return 'postgresql';
       if (/@[a-z_]\w*/i.test(s) || /\bTOP\s+\d+\b/i.test(s) || /\bNVARCHAR\b|\bGO\b|\[.*?\]/.test(s)) return 'tsql';
       if (/`[^`]+`/.test(s) || /\bAUTO_INCREMENT\b|\bUNSIGNED\b/i.test(s)) return 'mysql';
       if (/\bPRAGMA\b|\bWITHOUT\s+ROWID\b/i.test(s)) return 'sqlite';
-      // 弱いシグナル（LIMITは共通なので最後）
-      if (/\bLIMIT\b/i.test(s)) return 'mysql'; // or postgresql/sqliteだがMySQLを仮採用
+      if (/\bLIMIT\b/i.test(s)) return 'mysql';
       return 'sql';
     }
 
     async function tryFormatWith(lang, sql, optBase){
       const opt = { ...optBase, language: lang };
-      const res = window.sqlFormatter.format(sql, opt);
-      return res;
+      return window.sqlFormatter.format(sql, opt);
     }
 
     function formatNow(){
       const sql = input.value || '';
       const pre = preprocessSql(sql);
-      // カッコ未完了なら整形せず警告
       if (hasUnbalancedParens(pre)) {
         output.textContent = 'SQL が未完了です。（カッコ閉じ忘れ等）';
         return;
       }
       const baseOpt = {
-        // インデント幅（半角スペース数）
         tabWidth: Math.max(2, Math.min(8, Number(indent.value) || 2)),
-        // キーワードの大文字化
         keywordCase: uppercase.checked ? 'upper' : 'preserve',
-        // 複数ステートメントの間に空行（見やすさ向上）
         linesBetweenQueries: 1,
       };
       const primary = dialect.value;
       try {
         const res = window.sqlFormatter.format(pre, { ...baseOpt, language: primary });
-        output.textContent = res; // 後処理は撤去（ON改行を諦める方針）
+        output.textContent = res;
         return;
       } catch (e1) {
-        // 自動判定して再試行
         const guess = detectDialect(pre);
         if (guess && guess !== primary) {
           try {
@@ -324,9 +320,8 @@
             }
             output.textContent += `\n\n/* note: 方言を自動推測して "${guess}" で整形しました */`;
             return;
-          } catch (e2) { /* 次の候補へ */ }
+          } catch (e2) { /* 次 */ }
         }
-        // それでも失敗 → 複数候補を試す
         const fallback = ['postgresql','mysql','sqlite','tsql'].filter(x => x !== primary && x !== guess);
         for (const lang of fallback) {
           try {
@@ -337,9 +332,8 @@
               localStorage.setItem(SAVED_KEY, lang);
             }
             return;
-          } catch { /* 次を試す */ }
+          } catch {}
         }
-        // 最終的に全滅
         output.textContent = '整形に失敗しました: ' + (e1?.message || e1);
       }
     }
@@ -357,7 +351,20 @@
       const text = output.textContent || '';
       try{ await navigator.clipboard.writeText(text); alert('コピーしました'); } catch{ alert('コピーに失敗しました'); }
     });
-    $('#clearBtn').addEventListener('click', ()=>{ input.value=''; output.textContent=''; });
+    $('#clearBtn').addEventListener('click', ()=>{
+      // SELECT
+      $('#b_table').value = '';
+      $('#b_order_field').value=''; $('#b_order_dir').value='ASC'; $('#b_limit').value='';
+      colsGrid.innerHTML=''; condsGrid.innerHTML=''; joinsGrid.innerHTML='';
+      addColRow('*'); addCondRow(condsGrid);        // JOIN は自動追加しない
+      // INSERT
+      insGrid.innerHTML=''; addInsRow();
+      // UPDATE
+      setGrid.innerHTML=''; uCondsGrid.innerHTML='';
+      addSetRow(); addUCondRow();
+      // CREATE
+      defGrid.innerHTML=''; addDefRow();
+    });
 
     // タブ切替
     const tabFormat = $('#tabFormat');
@@ -368,7 +375,7 @@
       tabBuilder.addEventListener('click', () => { builder.style.display = 'block'; builder.scrollIntoView({behavior:'smooth'}); });
     }
 
-    // 汎用：削除ボタン
+    // 汎用：削除ボタン（行用）
     function mkDelBtn(){
       const btn = document.createElement('button');
       btn.className = 'btn small';
@@ -385,61 +392,128 @@
     const colsGrid = $('#colsGrid');
     const condsGrid = $('#condsGrid');
     const joinsGrid = $('#joinsGrid');
+
     function addColRow(val='*'){
       const r = document.createElement('div'); r.className='row'; r.style.justifyContent='stretch';
       const inp = document.createElement('input'); inp.type='text'; inp.placeholder='id  または  users.id AS user_id'; inp.value=val;
       inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addColRow(''); }});
       r.appendChild(inp); r.appendChild(mkDelBtn()); colsGrid.appendChild(r); inp.focus();
     }
-    function addCondRow({field='',op='=',value=''}={}){
-      const r = document.createElement('div'); r.className='row';
-      const f = document.createElement('input'); f.type='text'; f.placeholder='フィールド（例：created_at）'; f.value=field;
-      const o = document.createElement('select'); ['=','!=','>','<','>=','<=','LIKE','IN','IS NULL','IS NOT NULL'].forEach(v=>{ const opt=document.createElement('option'); opt.value=v; opt.textContent=v; o.appendChild(opt); }); o.value=op;
-      const v = document.createElement('input'); v.type='text'; v.placeholder="値（例：'2025-01-01' / ('A','B'))"; v.value=value;
-      v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addCondRow(); }});
-      r.appendChild(f); r.appendChild(o); r.appendChild(v); r.appendChild(mkDelBtn()); condsGrid.appendChild(r); f.focus();
+
+    // WHERE/UPDATE 条件：先頭要素の AND/OR を隠す（条件行とグループ開始行が対象）
+    function refreshCondConnectors(container){
+      const items = [...container.querySelectorAll('.cond-row, .group-row.start, .group-row.end')];
+      let firstIndex = -1;
+      for (let i=0;i<items.length;i++){
+        const it = items[i];
+        const hasExpr = it.classList.contains('cond-row') || it.classList.contains('start') || it.classList.contains('end');
+        if(!hasExpr) continue;
+        firstIndex = i; break;
+      }
+      items.forEach((it,i)=>{
+        const conn = it.querySelector?.('.cond-conn');
+        // グループ「終了」には接続詞を常に表示しない
+        if (it.classList.contains('end') && conn) conn.style.display = 'none';
+        else if (conn) conn.style.display = (i===firstIndex ? 'none' : 'inline-block');
+      });
     }
 
-    // function addJoinRow(){
-    //   const r = document.createElement('div'); r.className='row';
-    //   const t = document.createElement('select');
-    //   ['INNER JOIN','LEFT OUTER JOIN','RIGHT OUTER JOIN','FULL OUTER JOIN'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; t.appendChild(o); });
-    //   const table = document.createElement('input'); table.type='text'; table.placeholder='結合先テーブル（例：orders）';
-    //   const onL = document.createElement('input'); onL.type='text'; onL.placeholder='ON 左側（例：users.id）';
-    //   const onOp = document.createElement('select'); ['=','!=','>','<','>=','<='].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; onOp.appendChild(o); });
-    //   const onR = document.createElement('input'); onR.type='text'; onR.placeholder='ON 右側（例：orders.user_id）';
-    //   r.appendChild(t); r.appendChild(table); r.appendChild(onL); r.appendChild(onOp); r.appendChild(onR); r.appendChild(mkDelBtn()); joinsGrid.appendChild(r);
-    // }
+    // 条件 1 行を追加（target は condsGrid / uCondsGrid のいずれか）
+    
+    function addCondRow(target=condsGrid, {field='',op='=',value='',conn='AND'}={}){
+      const r = document.createElement('div'); r.className='row cond-row';
+      const connSel = document.createElement('select'); connSel.className='cond-conn';
+      ['AND','OR'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; connSel.appendChild(o); });
+      connSel.value = conn;
+      const f = document.createElement('input'); f.type='text'; f.placeholder='フィールド（例：created_at）'; f.value=field;
+      const o = document.createElement('select'); o.className='cond-op';
+      ['=','!=','>','<','>=','<=','LIKE','IN','IS NULL','IS NOT NULL'].forEach(v=>{ const opt=document.createElement('option'); opt.value=v; opt.textContent=v; o.appendChild(opt); });
+      o.value=op;
+      const v = document.createElement('input'); v.type='text'; v.placeholder="値（例：'2025-01-01' / ('A','B'))"; v.value=value; v.className='cond-val';
+      // IS NULL / IS NOT NULL のときは値入力を無効化
+      const adjustValState = ()=>{ const noVal = (o.value==='IS NULL' || o.value==='IS NOT NULL'); v.disabled = noVal; if(noVal) v.value=''; };
+      o.addEventListener('change', adjustValState); adjustValState();
+      // Enter で同じコンテナに次行を追加
+      v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addCondRow(target); }});
+      // 行削除
+      const del = document.createElement('button'); del.className='btn small'; del.textContent='－ 削除';
+      del.addEventListener('click', ()=>{ r.remove(); refreshCondConnectors(target); });
+      r.appendChild(connSel); r.appendChild(f); r.appendChild(o); r.appendChild(v); r.appendChild(del);
+      target.appendChild(r);
+      refreshCondConnectors(target);
+      f.focus();
+    }
 
-    // JOIN の ON 条件 1 行を追加
-    function addJoinCondRow(block, {l='', op='=', r=''}={}) {
+    // （ 開始 行を追加
+    function addCondGroupStart(target=condsGrid, {conn='AND'}={}){
+      const r = document.createElement('div'); r.className='row group-row start';
+      const connSel = document.createElement('select'); connSel.className='cond-conn';
+      ['AND','OR'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; connSel.appendChild(o); });
+      connSel.value = conn;
+      const label = document.createElement('span'); label.textContent = '('; label.style.padding='6px 8px'; label.style.border='1px solid #334155'; label.style.borderRadius='8px';
+      const del = document.createElement('button'); del.className='btn small'; del.textContent='－ 削除';
+      del.addEventListener('click', ()=>{ r.remove(); refreshCondConnectors(target); });
+      r.appendChild(connSel); r.appendChild(label); r.appendChild(del);
+      target.appendChild(r);
+      refreshCondConnectors(target);
+    }
+
+    // ） 終了 行を追加（接続詞は持たない）
+    function addCondGroupEnd(target=condsGrid){
+      const r = document.createElement('div'); r.className='row group-row end';
+      const spacer = document.createElement('span'); spacer.textContent = ')'; spacer.style.padding='6px 8px'; spacer.style.border='1px solid #334155'; spacer.style.borderRadius='8px';
+      const del = document.createElement('button'); del.className='btn small'; del.textContent='－ 削除';
+      del.addEventListener('click', ()=>{ r.remove(); refreshCondConnectors(target); });
+      r.appendChild(spacer); r.appendChild(del);
+      target.appendChild(r);
+      refreshCondConnectors(target);
+    }    
+
+    // JOIN：先頭行の AND/OR を隠す（2行目以降だけ表示）
+    function refreshJoinConnectors(block){
+      const rows = [...block.querySelectorAll('.join-cond-row')];
+      rows.forEach((r,i)=>{
+        const conn = r.querySelector('.join-cond-conn');
+        if(conn){ conn.style.display = (i===0 ? 'none' : 'inline-block'); }
+      });
+    }
+
+    // JOIN の ON 条件 1 行を追加（AND/OR セレクタ付き）
+    function addJoinCondRow(block, {l='', op='=', r='', conn='AND'}={}) {
       const conds = block.querySelector('.join-conds');
       const row = document.createElement('div');
       row.className = 'row join-cond-row';
+      const connSel = document.createElement('select'); connSel.className='join-cond-conn';
+      ['AND','OR'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; connSel.appendChild(o); });
+      connSel.value = conn;
       const onL = document.createElement('input'); onL.type='text'; onL.placeholder='ON 左側（例：users.id）'; onL.value=l; onL.className='join-on-left';
       const onOp = document.createElement('select'); onOp.className='join-on-op';
       ['=','!=','>','<','>=','<='].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; onOp.appendChild(o); });
       onOp.value = op;
       const onR = document.createElement('input'); onR.type='text'; onR.placeholder='ON 右側（例：orders.user_id）'; onR.value=r; onR.className='join-on-right';
-      row.appendChild(onL); row.appendChild(onOp); row.appendChild(onR); row.appendChild(mkDelBtn());
+      const delBtn = document.createElement('button'); delBtn.className='btn small'; delBtn.textContent='－ 削除';
+      delBtn.addEventListener('click', ()=>{ row.remove(); refreshJoinConnectors(block); });
+      row.appendChild(connSel); row.appendChild(onL); row.appendChild(onOp); row.appendChild(onR); row.appendChild(delBtn);
       conds.appendChild(row);
+      refreshJoinConnectors(block);
       onL.focus();
     }
-    // JOIN ブロック全体を追加（ヘッダ：JOIN種別/テーブル + 条件リスト）
+
+    // JOIN ブロック全体を追加（枠ごと削除可能）
     function addJoinRow(){
       const block = document.createElement('div');
-      block.className = 'card';
+      block.className = 'card join-block';
       block.style.padding = '10px';
       block.style.background = '#0b1220';
       block.style.border = '1px solid #243045';
-      block.classList.add('join-block');
 
       const head = document.createElement('div'); head.className='row';
       const jtSel = document.createElement('select'); jtSel.className='join-type';
       ['INNER JOIN','LEFT OUTER JOIN','RIGHT OUTER JOIN','FULL OUTER JOIN'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; jtSel.appendChild(o); });
       const table = document.createElement('input'); table.type='text'; table.placeholder='結合先テーブル（例：orders）'; table.className='join-table';
       const addCondBtn = document.createElement('button'); addCondBtn.className='btn small'; addCondBtn.textContent='＋ 条件を追加';
-      const delJoinBtn = mkDelBtn();
+      const delJoinBtn = document.createElement('button'); delJoinBtn.className='btn small danger'; delJoinBtn.textContent='－ 結合を削除';
+      delJoinBtn.addEventListener('click', ()=> block.remove());
       head.appendChild(jtSel); head.appendChild(table); head.appendChild(addCondBtn); head.appendChild(delJoinBtn);
 
       const conds = document.createElement('div'); conds.className='vstack join-conds'; conds.style.marginTop='6px';
@@ -448,15 +522,13 @@
       block.appendChild(conds);
       joinsGrid.appendChild(block);
 
-      // 初期で1行用意
-      addJoinCondRow(block);
-      // 追加ボタン
+      // 初期は条件行を自動追加しない（必要に応じて追加）
       addCondBtn.addEventListener('click', ()=> addJoinCondRow(block));
     }
 
     // INSERTエリア UI
     const insGrid = $('#insGrid');
-    function addInsRow(){ // col + val
+    function addInsRow(){
       const r = document.createElement('div'); r.className = 'row';
       const c = document.createElement('input'); c.type='text'; c.placeholder='列名（例：name）';
       const v = document.createElement('input'); v.type='text'; v.placeholder="値（例：'Alice' / 123 / NOW()）";
@@ -474,10 +546,7 @@
       v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addSetRow(); }});
       r.appendChild(f); r.appendChild(v); r.appendChild(mkDelBtn()); setGrid.appendChild(r); f.focus();
     }
-    function addUCondRow(){ addCondRow.call(null, {}); // 使い回し
-      // 直前に追加された行をuCondsGrid側へ移す
-      const last = condsGrid.lastElementChild; if(last){ uCondsGrid.appendChild(last); }
-    }
+    function addUCondRow(){ addCondRow(uCondsGrid); }
 
     // CREATE TABLEエリア UI
     const defGrid = $('#defGrid');
@@ -493,11 +562,15 @@
 
     // ボタン紐付け
     $('#addCol').addEventListener('click', ()=> addColRow(''));
-    $('#addCond').addEventListener('click', ()=> addCondRow());
+    $('#addCond').addEventListener('click', ()=> addCondRow(condsGrid));
+    $('#addCondGroupStart').addEventListener('click', ()=> addCondGroupStart(condsGrid));
+    $('#addCondGroupEnd').addEventListener('click', ()=> addCondGroupEnd(condsGrid));
     $('#addJoin').addEventListener('click', ()=> addJoinRow());
     $('#addIns').addEventListener('click', ()=> addInsRow());
     $('#addSet').addEventListener('click', ()=> addSetRow());
     $('#addUCond').addEventListener('click', ()=> addUCondRow());
+    $('#addUCondGroupStart').addEventListener('click', ()=> addCondGroupStart(uCondsGrid));
+    $('#addUCondGroupEnd').addEventListener('click', ()=> addCondGroupEnd(uCondsGrid));
     $('#addDef').addEventListener('click', ()=> addDefRow());
 
     // OP 切り替え表示
@@ -516,146 +589,11 @@
     }
     opSel.addEventListener('change', updateOpView);
 
-    // クリア
-    $('#b_clear').addEventListener('click', ()=>{
-      $('#b_table').value = '';
-      // SELECT
-      colsGrid.innerHTML=''; condsGrid.innerHTML=''; joinsGrid.innerHTML='';
-      $('#b_order_field').value=''; $('#b_order_dir').value='ASC'; $('#b_limit').value='';
-      // INSERT
-      insGrid.innerHTML='';
-      // UPDATE
-      setGrid.innerHTML=''; uCondsGrid.innerHTML='';
-      // CREATE
-      defGrid.innerHTML='';
-      // 初期行
-      addColRow('*'); addCondRow(); addJoinRow(); // SELECT系の雛形
-      addInsRow(); // INSERT
-      addSetRow(); addUCondRow(); // UPDATE
-      addDefRow(); // CREATE
-    });
-
-    // 生成
-    $('#b_make').addEventListener('click', ()=>{
-      const op = opSel.value;
-      const table = ($('#b_table').value||'').trim();
-      if(!table){ alert('テーブル名を入力してください'); return; }
-
-      let sql = '';
-
-      if(op==='select'){
-        const cols = [...colsGrid.querySelectorAll('input[type="text"]')].map(i=>(i.value||'').trim()).filter(Boolean);
-        const colsSql = cols.length ? cols.join(', ') : '*';
-        sql = `SELECT ${colsSql}\nFROM ${table}`;
-
-        // JOIN
-        const joinRows = [...joinsGrid.children];
-        joinRows.forEach(row=>{
-          const [jtEl, tEl, onL, onOp, onR] = row.querySelectorAll('select,input');
-          const jt = jtEl?.value || 'INNER JOIN';
-          const jtTable = (tEl?.value||'').trim();
-          const l = (onL?.value||'').trim();
-          const op2 = (onOp?.value||'=').trim();
-          const r2 = (onR?.value||'').trim();
-          if(jtTable && l && r2){
-            sql += `\n${jt} ${jtTable} ON ${l} ${op2} ${r2}`;
-          }
-        });
-
-        // WHERE
-        const conds = [...condsGrid.children].map(row=>{
-          const [f,o,v] = row.querySelectorAll('input,select');
-          const field = (f?.value||'').trim();
-          const opx = (o?.value||'=').trim();
-          let val = (v?.value||'').trim();
-          if (!field) return '';
-          if (opx==='IN' && val && !/^\(.*\)$/.test(val)) {
-            const parts = val.split(',').map(s=>s.trim()).filter(Boolean);
-            if (parts.length>1){ val='('+parts.join(', ')+')'; }
-          }
-          if (opx==='IS NULL' || opx==='IS NOT NULL') return `${field} ${opx}`;
-          if (!val) return '';
-          return `${field} ${opx} ${val}`;
-        }).filter(Boolean);
-        if (conds.length) sql += `\nWHERE ${conds.join('\n  AND ')}`;
-
-        const orderField = ($('#b_order_field').value||'').trim();
-        const orderDir   = ($('#b_order_dir').value||'ASC');
-        const limit      = ($('#b_limit').value||'').trim();
-        if (orderField) sql += `\nORDER BY ${orderField} ${orderDir}`;
-        if (limit) sql += `\nLIMIT ${limit}`;
-      }
-
-      if(op==='insert'){
-        const rows = [...insGrid.children].map(row=>{
-          const [c,v] = row.querySelectorAll('input');
-          const col = (c?.value||'').trim();
-          const val = (v?.value||'').trim();
-          if (!col || !val) return null;
-          return {col, val};
-        }).filter(Boolean);
-        if(!rows.length){ alert('INSERTの列と値を1行以上入力してください'); return; }
-        const cols = rows.map(r=>r.col).join(', ');
-        const vals = rows.map(r=>r.val).join(', ');
-        sql = `INSERT INTO ${table} (${cols})\nVALUES (${vals})`;
-      }
-
-      if(op==='update'){
-        const sets = [...setGrid.children].map(row=>{
-          const [f,v] = row.querySelectorAll('input');
-          const field = (f?.value||'').trim();
-          const val = (v?.value||'').trim();
-          if(!field || !val) return '';
-          return `${field} = ${val}`;
-        }).filter(Boolean);
-        if(!sets.length){ alert('UPDATEのSETを1行以上入力してください'); return; }
-        sql = `UPDATE ${table}\nSET ${sets.join(', ')}`;
-
-        const conds = [...uCondsGrid.children].map(row=>{
-          const [f,o,v] = row.querySelectorAll('input,select');
-          const field = (f?.value||'').trim();
-          const opx = (o?.value||'=').trim();
-          let val = (v?.value||'').trim();
-          if (!field) return '';
-          if (opx==='IN' && val && !/^\(.*\)$/.test(val)) {
-            const parts = val.split(',').map(s=>s.trim()).filter(Boolean);
-            if (parts.length>1){ val='('+parts.join(', ')+')'; }
-          }
-          if (opx==='IS NULL' || opx==='IS NOT NULL') return `${field} ${opx}`;
-          if (!val) return '';
-          return `${field} ${opx} ${val}`;
-        }).filter(Boolean);
-        if (conds.length) sql += `\nWHERE ${conds.join('\n  AND ')}`;
-      }
-
-      if(op==='create'){
-        const defs = [...defGrid.children].map(row=>{
-          const [name,type,nullable,def,pk] = row.querySelectorAll('input,select');
-          const n = (name?.value||'').trim();
-          const t = (type?.value||'').trim();
-          const nn = (nullable?.value||'NOT NULL'); // デフォルトNOT NULL
-          const d = (def?.value||'').trim();
-          const p = (pk?.value||'').trim();
-          if(!n || !t) return '';
-          let line = `${n} ${t} ${nn}`;
-          if(d) line += ` DEFAULT ${d}`;
-          if(p) line += ` ${p}`;
-          return line;
-        }).filter(Boolean);
-        if(!defs.length){ alert('CREATE TABLEの列定義を1行以上入力してください'); return; }
-        sql = `CREATE TABLE ${table} (\n  ${defs.join(',\n  ')}\n)`;
-      }
-
-      input.value = sql;
-      formatNow();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-
     // 初期セットアップ
     function initDefaults(){
-      // SELECT
+      // SELECT（JOIN は追加しない）
       colsGrid.innerHTML=''; condsGrid.innerHTML=''; joinsGrid.innerHTML='';
-      addColRow('*'); addJoinRow(); addCondRow();
+      addColRow('*'); addCondRow(condsGrid);
       // INSERT
       insGrid.innerHTML=''; addInsRow();
       // UPDATE
@@ -666,6 +604,173 @@
     }
     initDefaults();
     formatNow();
+
+
+    // =========================
+    // SQLビルダー → SQL文字列生成
+    // =========================
+    function buildSelectSQL(){
+      const table = ($('#b_table').value||'').trim();
+      if(!table) return '';
+      // カラム
+      const cols = [...colsGrid.querySelectorAll('.row input[type="text"]')]
+        .map(i=>i.value.trim()).filter(Boolean);
+      const colPart = cols.length? cols.join(', ') : '*';
+      let sql = `SELECT ${colPart}\nFROM ${table}`;
+      // JOIN（堅牢版：空行スキップ、先頭に接続詞付けない）
+      const joinBlocks = [...joinsGrid.querySelectorAll('.join-block')];
+      joinBlocks.forEach(block=>{
+        const jt = (block.querySelector('.join-type')?.value)||'INNER JOIN';
+        const jtTable = (block.querySelector('.join-table')?.value||'').trim();
+        if(!jtTable) return;
+        const rows = [...block.querySelectorAll('.join-cond-row')];
+        const parts=[]; let first=true;
+        for(const r of rows){
+          const l =(r.querySelector('.join-on-left')?.value||'').trim();
+          const op=(r.querySelector('.join-on-op')?.value||'=').trim();
+          const rr=(r.querySelector('.join-on-right')?.value||'').trim();
+          if(!l||!rr) continue;
+          const one = `${l} ${op} ${rr}`;
+          if(first){ parts.push(one); first=false; }
+          else {
+            const conn=(r.querySelector('.join-cond-conn')?.value||'AND').trim();
+            parts.push(`${conn} ${one}`);
+          }
+        }
+        if(parts.length){ sql += `\n${jt} ${jtTable} ON ${parts.join(' ')}`; }
+      });
+
+      // WHERE（グルーピング対応）
+      const whereStr = buildWhereClause(condsGrid);
+      if (whereStr === null) { alert('WHERE の括弧が未完了です。'); return ''; }
+      if (whereStr) sql += `\nWHERE ${whereStr}`;
+
+      // ORDER
+      const of = ($('#b_order_field').value||'').trim();
+      if(of){
+        const dir = ($('#b_order_dir').value||'ASC').trim();
+        sql += `\nORDER BY ${of} ${dir}`;
+      }
+      // LIMIT
+      const lim = Number($('#b_limit').value||'');
+      if(lim>0){ sql += `\nLIMIT ${lim}`; }
+      return sql + ';';
+    }
+
+    function buildInsertSQL(){
+      const table = ($('#b_table').value||'').trim();
+      if(!table) return '';
+      const rows = [...insGrid.querySelectorAll('.row')];
+      const cols=[], vals=[];
+      rows.forEach(r=>{
+        const [cEl,vEl] = r.querySelectorAll('input');
+        const c=(cEl?.value||'').trim();
+        const v=(vEl?.value||'').trim();
+        if(c && v){ cols.push(c); vals.push(v); }
+      });
+      if(!cols.length) return '';
+      return `INSERT INTO ${table} (${cols.join(', ')})\nVALUES (${vals.join(', ')});`;
+    }
+
+    function buildUpdateSQL(){
+      const table = ($('#b_table').value||'').trim();
+      if(!table) return '';
+      const setRows = [...setGrid.querySelectorAll('.row')];
+      const sets = setRows.map(r=>{
+        const [fEl,vEl] = r.querySelectorAll('input');
+        const f=(fEl?.value||'').trim();
+        const v=(vEl?.value||'').trim();
+        if(!f||!v) return '';
+        return `${f} = ${v}`;
+      }).filter(Boolean);
+      if(!sets.length) return '';
+      let sql = `UPDATE ${table}\nSET ${sets.join(', ')}`;
+
+      // UPDATE の WHERE（グルーピング対応）
+      const uWhere = buildWhereClause(uCondsGrid);
+      if (uWhere === null) { alert('WHERE の括弧が未完了です。'); return ''; }
+      if (uWhere) sql += `\nWHERE ${uWhere}`;
+      return sql + ';';
+    }
+
+    // 共通：WHERE 句を組み立て（グルーピング対応）
+    // 戻り値： ''（条件なし） / 'expr ...'（成功） / null（括弧不整合）
+    function buildWhereClause(container){
+      const rows = [...container.querySelectorAll('.cond-row, .group-row.start, .group-row.end')];
+      const parts = [];
+      let opened = 0;
+      let first = true;
+      for (const r of rows){
+        if (r.classList.contains('cond-row')){
+          const f =(r.querySelector('input[type="text"]')?.value||'').trim();
+          const o =(r.querySelector('.cond-op')?.value||'=').trim();
+          const v =(r.querySelector('.cond-val')?.value||'').trim();
+          if(!f) continue;
+          let expr = '';
+          if (o==='IS NULL' || o==='IS NOT NULL') expr = `${f} ${o}`;
+          else if (v) expr = `${f} ${o} ${v}`;
+          if(!expr) continue;
+          if(first){ parts.push(expr); first=false; }
+          else {
+            const conn=(r.querySelector('.cond-conn')?.value||'AND').trim();
+            parts.push(`${conn} ${expr}`);
+          }
+        } else if (r.classList.contains('group-row') && r.classList.contains('start')){
+          const conn=(r.querySelector('.cond-conn')?.value||'AND').trim();
+          if(first){ parts.push('('); first=false; }
+          else { parts.push(`${conn} (`); }
+          opened++;
+        } else if (r.classList.contains('group-row') && r.classList.contains('end')){
+          if (opened<=0) return null; // 閉じ過ぎ
+          parts.push(')');
+          opened--;
+        }
+      }
+      if (opened!==0) return null; // 未クローズ
+      return parts.join(' ');
+    }
+
+    function buildCreateSQL(){
+      const table = ($('#b_table').value||'').trim();
+      if(!table) return '';
+      const defs = [...defGrid.querySelectorAll('.row')].map(r=>{
+        const [nameEl,typeEl,nullEl,defEl,pkEl] = r.querySelectorAll('input,select');
+        const name=(nameEl?.value||'').trim();
+        const type=(typeEl?.value||'').trim();
+        const nul =(nullEl?.value||'').trim(); // 'NOT NULL' or 'NULL'
+        const defv=(defEl?.value||'').trim();
+        const pk  =(pkEl?.value||'').trim();   // '' or 'PRIMARY KEY'
+        if(!name||!type) return '';
+        return [
+          `${name} ${type}`,
+          nul || '',
+          defv? `DEFAULT ${defv}` : '',
+          pk || ''
+        ].filter(Boolean).join(' ');
+      }).filter(Boolean);
+      if(!defs.length) return '';
+      return `CREATE TABLE ${table} (\n  ${defs.join(',\n  ')}\n);`;
+    }
+
+    // 「SQLを作る → 入力に反映」
+    $('#b_make')?.addEventListener('click', ()=>{
+      const op = $('#op').value;
+      let sql = '';
+      if(op==='select') sql = buildSelectSQL();
+      else if(op==='insert') sql = buildInsertSQL();
+      else if(op==='update') sql = buildUpdateSQL();
+      else if(op==='create') sql = buildCreateSQL();
+      if(!sql){
+        alert('必要な入力が不足しています（テーブル名や項目など）');
+        return;
+      }
+      input.value = sql;
+      // 直後に整形して出力へ
+      formatNow();
+      // 入力欄までスクロール（任意）
+      input.scrollIntoView({behavior:'smooth', block:'center'});
+    });
+
   </script>
 </body>
 </html>
