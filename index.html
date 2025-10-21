@@ -491,12 +491,20 @@
       refreshCondConnectors(target);
     }    
 
-    // JOIN：先頭行の AND/OR を隠す（2行目以降だけ表示）
+    // JOIN：接続詞表示制御（条件行＆グループ開始は先頭で非表示、グループ終了は常に非表示）
     function refreshJoinConnectors(block){
-      const rows = [...block.querySelectorAll('.join-cond-row')];
-      rows.forEach((r,i)=>{
-        const conn = r.querySelector('.join-cond-conn');
-        if(conn){ conn.style.display = (i===0 ? 'none' : 'inline-block'); }
+      const items = [...block.querySelectorAll('.join-cond-row, .join-group.start, .join-group.end')];
+      let firstIdx = -1;
+      for (let i=0;i<items.length;i++){
+        const it = items[i];
+        const isExpr = it.classList.contains('join-cond-row') || it.classList.contains('start') || it.classList.contains('end');
+        if(!isExpr) continue;
+        firstIdx = i; break;
+      }
+      items.forEach((it,i)=>{
+        const conn = it.querySelector?.('.join-cond-conn');
+        if (it.classList.contains('end')) { if(conn) conn.style.display='none'; }
+        else if (conn) { conn.style.display = (i===firstIdx ? 'none' : 'inline-block'); }
       });
     }
 
@@ -552,6 +560,33 @@
       onL.focus();
     }
 
+  // JOIN グループ開始（（）
+  function addJoinGroupStart(block,{conn='AND'}={}){
+    const conds = block.querySelector('.join-conds');
+    const row = document.createElement('div'); row.className='row join-group start';
+    const connSel = document.createElement('select'); connSel.className='join-cond-conn';
+    ['AND','OR'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; connSel.appendChild(o); });
+    connSel.value = conn;
+    const chip = document.createElement('span'); chip.textContent='('; chip.style.padding='6px 8px'; chip.style.border='1px solid #334155'; chip.style.borderRadius='8px';
+    const del = document.createElement('button'); del.className='btn small'; del.textContent='－ 削除';
+    del.addEventListener('click', ()=>{ row.remove(); refreshJoinConnectors(block); });
+    row.appendChild(connSel); row.appendChild(chip); row.appendChild(del);
+    conds.appendChild(row);
+    refreshJoinConnectors(block);
+  }
+
+  // JOIN グループ終了（ ））
+  function addJoinGroupEnd(block){
+    const conds = block.querySelector('.join-conds');
+    const row = document.createElement('div'); row.className='row join-group end';
+    const chip = document.createElement('span'); chip.textContent=')'; chip.style.padding='6px 8px'; chip.style.border='1px solid #334155'; chip.style.borderRadius='8px';
+    const del = document.createElement('button'); del.className='btn small'; del.textContent='－ 削除';
+    del.addEventListener('click', ()=>{ row.remove(); refreshJoinConnectors(block); });
+    row.appendChild(chip); row.appendChild(del);
+    conds.appendChild(row);
+    refreshJoinConnectors(block);
+  }
+
     // JOIN ブロック全体を追加（枠ごと削除可能）
     function addJoinRow(){
       const block = document.createElement('div');
@@ -565,9 +600,13 @@
       ['INNER JOIN','LEFT OUTER JOIN','RIGHT OUTER JOIN','FULL OUTER JOIN'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; jtSel.appendChild(o); });
       const table = document.createElement('input'); table.type='text'; table.placeholder='結合先テーブル（例：orders）'; table.className='join-table';
       const addCondBtn = document.createElement('button'); addCondBtn.className='btn small'; addCondBtn.textContent='＋ 条件を追加';
+      const gOpenBtn  = document.createElement('button'); gOpenBtn.className='btn small';  gOpenBtn.textContent='（ 開始';
+      const gCloseBtn = document.createElement('button'); gCloseBtn.className='btn small'; gCloseBtn.textContent='） 終了';
       const delJoinBtn = document.createElement('button'); delJoinBtn.className='btn small danger'; delJoinBtn.textContent='－ 結合を削除';
       delJoinBtn.addEventListener('click', ()=> block.remove());
-      head.appendChild(jtSel); head.appendChild(table); head.appendChild(addCondBtn); head.appendChild(delJoinBtn);
+      head.appendChild(jtSel); head.appendChild(table);
+      head.appendChild(addCondBtn); head.appendChild(gOpenBtn); head.appendChild(gCloseBtn);
+      head.appendChild(delJoinBtn);
 
       const conds = document.createElement('div'); conds.className='vstack join-conds'; conds.style.marginTop='6px';
 
@@ -577,6 +616,8 @@
 
       // 初期は条件行を自動追加しない（必要に応じて追加）
       addCondBtn.addEventListener('click', ()=> addJoinCondRow(block));
+      gOpenBtn.addEventListener('click', ()=> addJoinGroupStart(block));
+      gCloseBtn.addEventListener('click', ()=> addJoinGroupEnd(block));
     }
 
     // INSERTエリア UI
@@ -670,32 +711,38 @@
         .map(i=>i.value.trim()).filter(Boolean);
       const colPart = cols.length? cols.join(', ') : '*';
       let sql = `SELECT ${colPart}\nFROM ${table}`;
-      // JOIN（堅牢版：空行スキップ、先頭に接続詞付けない）
+      // JOIN（グルーピング対応：空行スキップ、先頭に接続詞付けない、括弧整合チェック）
       const joinBlocks = [...joinsGrid.querySelectorAll('.join-block')];
       joinBlocks.forEach(block=>{
         const jt = (block.querySelector('.join-type')?.value)||'INNER JOIN';
         const jtTable = (block.querySelector('.join-table')?.value||'').trim();
         if(!jtTable) return;
-        const rows = [...block.querySelectorAll('.join-cond-row')];
-        const parts=[]; let first=true;
+        const rows = [...block.querySelectorAll('.join-cond-row, .join-group.start, .join-group.end')];
+        const parts=[]; let first=true; let opened=0;
         for(const r of rows){
-          const l  =(r.querySelector('.join-on-left')?.value||'').trim();
-          const op =(r.querySelector('.join-on-op')?.value||'=').trim();
-          const rr =(r.querySelector('.join-on-right')?.value||'').trim();
-          if(!l) continue;
-          let one='';
-          if(op==='IS NULL' || op==='IS NOT NULL'){
-            one = `${l} ${op}`;
-          } else {
-            if(!rr) continue;
-            one = `${l} ${op} ${rr}`;
-          }
-          if(first){ parts.push(one); first=false; }
-          else {
+          if (r.classList.contains('join-cond-row')){
+            const l  =(r.querySelector('.join-on-left')?.value||'').trim();
+            const op =(r.querySelector('.join-on-op')?.value||'=').trim();
+            const rr =(r.querySelector('.join-on-right')?.value||'').trim();
+            if(!l) continue;
+            let one='';
+            if(op==='IS NULL' || op==='IS NOT NULL'){ one = `${l} ${op}`; }
+            else { if(!rr) continue; one = `${l} ${op} ${rr}`; }
+            if(first){ parts.push(one); first=false; }
+            else {
+              const conn=(r.querySelector('.join-cond-conn')?.value||'AND').trim();
+              parts.push(`${conn} ${one}`);
+            }
+          } else if (r.classList.contains('join-group') && r.classList.contains('start')){
             const conn=(r.querySelector('.join-cond-conn')?.value||'AND').trim();
-            parts.push(`${conn} ${one}`);
+            if(first){ parts.push('('); first=false; } else { parts.push(`${conn} (`); }
+            opened++;
+          } else if (r.classList.contains('join-group') && r.classList.contains('end')){
+            if (opened<=0){ alert('JOIN の括弧が未完了です。'); return; }
+            parts.push(')'); opened--;
           }
         }
+        if (opened!==0){ alert('JOIN の括弧が未完了です。'); return; }
         if(parts.length){ sql += `\n${jt} ${jtTable} ON ${parts.join(' ')}`; }
       });
 
