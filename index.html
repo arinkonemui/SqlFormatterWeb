@@ -15,7 +15,7 @@
     .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
     .row > *{margin:4px 0}
     select, input[type="number"], input[type="checkbox"], input[type="text"]{background:#0b1220;border:1px solid #243045;color:var(--fg);border-radius:10px;padding:8px 10px}
-    input[type="text"]{min-width:220px}
+    input[type="text"]{min-width:180px}
     textarea{width:100%;min-height:180px;background:#0b1220;border:1px solid #243045;border-radius:12px;color:var(--fg);padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
     .out{min-height:220px;white-space:pre;overflow:auto}
     .btn{background:#0b1220;border:1px solid #334155;color:var(--fg);padding:10px 14px;border-radius:10px;cursor:pointer}
@@ -92,7 +92,7 @@
 
         <!-- 共通：テーブル名 -->
         <div class="row" id="row_table">
-          <label>テーブル名 <input id="b_table" type="text" placeholder="users" /></label>
+          <label>テーブル名 <input id="b_table" type="text" placeholder="テーブル名" /></label>
         </div>
 
         <!-- --- SELECT 専用エリア --- -->
@@ -101,7 +101,7 @@
           <div>
             <div class="row" style="justify-content:space-between">
               <div class="muted">カラム（複数可）</div>
-              <div class="hint">空欄は無視／Enterで追加</div>
+              <div class="hint">空欄は無視</div>
             </div>
             <div id="colsGrid" class="vstack" style="margin-top:6px"></div>
             <div class="row" style="margin-top:6px">
@@ -125,8 +125,7 @@
           <div>
             <div class="row" style="justify-content:space-between">
               <div class="muted">条件（WHERE：複数可／AND結合）</div>
-              <div class="hint">例：created_at >= '2025-01-01'</div>
-            </div>
+              </div>
             <div id="condsGrid" class="vstack" style="margin-top:6px"></div>
             <div class="row" style="margin-top:6px">
               <button class="btn small" id="addCond">＋ 条件を追加</button>
@@ -156,11 +155,10 @@
         <div id="area_insert" class="vstack" style="margin-top:6px; display:none">
           <div class="row" style="justify-content:space-between">
             <div class="muted">列と値（複数可）</div>
-            <div class="hint">値はクォート等を含めて入力（例：'Alice', 123, NOW()）</div>
           </div>
           <div id="insGrid" class="vstack" style="margin-top:6px"></div>
           <div class="row" style="margin-top:6px">
-            <button class="btn small" id="addIns">＋ 行を追加</button>
+            <button class="btn small" id="addIns">＋ 列を追加</button>
           </div>
         </div>
 
@@ -357,6 +355,63 @@
       const text = output.textContent || '';
       try{ await navigator.clipboard.writeText(text); alert('コピーしました'); } catch{ alert('コピーに失敗しました'); }
     });
+    // ---- 型候補（datalist）を方言に連動させる ----
+    (function(){
+      // sql-formatter の方言想定（足りなくてもフォールバックします）
+      const TYPE_CATALOG = {
+        sql: ['INT','INTEGER','BIGINT','SMALLINT','DECIMAL(10,2)','NUMERIC(10,2)','FLOAT','REAL','DOUBLE','BOOLEAN','CHAR(1)','VARCHAR(255)','TEXT','DATE','TIME','DATETIME','TIMESTAMP','JSON'],
+        mysql: ['TINYINT','SMALLINT','MEDIUMINT','INT','BIGINT','DECIMAL(10,2)','FLOAT','DOUBLE','BIT','CHAR(1)','VARCHAR(255)','TEXT','MEDIUMTEXT','LONGTEXT','DATE','TIME','DATETIME','TIMESTAMP','JSON','ENUM(\'A\',\'B\')','SET(\'A\',\'B\')'],
+        mariadb: ['TINYINT','SMALLINT','MEDIUMINT','INT','BIGINT','DECIMAL(10,2)','FLOAT','DOUBLE','BIT','CHAR(1)','VARCHAR(255)','TEXT','DATE','TIME','DATETIME','TIMESTAMP','JSON'],
+        postgresql: ['SMALLINT','INTEGER','BIGINT','NUMERIC(10,2)','REAL','DOUBLE PRECISION','BOOLEAN','CHAR(1)','VARCHAR(255)','TEXT','DATE','TIME','TIMESTAMP','TIMESTAMPTZ','UUID','JSONB','INET','BYTEA','SERIAL','BIGSERIAL'],
+        sqlite: ['INTEGER','REAL','TEXT','BLOB','NUMERIC','DATE','DATETIME'],
+        tsql: ['INT','BIGINT','SMALLINT','TINYINT','DECIMAL(10,2)','NUMERIC(10,2)','FLOAT','REAL','BIT','CHAR(1)','NCHAR(10)','VARCHAR(255)','NVARCHAR(255)','TEXT','DATE','TIME','DATETIME','DATETIME2','SMALLDATETIME','UNIQUEIDENTIFIER','MONEY'],
+        mssql: ['INT','BIGINT','SMALLINT','TINYINT','DECIMAL(10,2)','NUMERIC(10,2)','FLOAT','REAL','BIT','CHAR(1)','NCHAR(10)','VARCHAR(255)','NVARCHAR(255)','TEXT','DATE','TIME','DATETIME','DATETIME2','SMALLDATETIME','UNIQUEIDENTIFIER','MONEY'],
+        oracle: ['NUMBER(10,2)','BINARY_FLOAT','BINARY_DOUBLE','CHAR(1)','NCHAR(10)','VARCHAR2(255)','NVARCHAR2(255)','CLOB','DATE','TIMESTAMP','TIMESTAMP WITH TIME ZONE'],
+        plsql: ['NUMBER(10,2)','BINARY_FLOAT','BINARY_DOUBLE','CHAR(1)','NCHAR(10)','VARCHAR2(255)','NVARCHAR2(255)','CLOB','DATE','TIMESTAMP','TIMESTAMP WITH TIME ZONE'],
+        bigquery: ['INT64','NUMERIC','BIGNUMERIC','FLOAT64','BOOL','STRING','BYTES','DATE','TIME','DATETIME','TIMESTAMP','GEOGRAPHY','JSON'],
+        redshift: ['SMALLINT','INTEGER','BIGINT','DECIMAL(10,2)','REAL','DOUBLE PRECISION','BOOLEAN','CHAR(1)','VARCHAR(255)','SUPER','DATE','TIMESTAMP','TIMESTAMPTZ'],
+        hive: ['TINYINT','SMALLINT','INT','BIGINT','FLOAT','DOUBLE','DECIMAL(10,2)','BOOLEAN','STRING','VARCHAR(255)','CHAR(10)','BINARY','DATE','TIMESTAMP'],
+        spark: ['TINYINT','SMALLINT','INT','BIGINT','FLOAT','DOUBLE','DECIMAL(10,2)','BOOLEAN','STRING','BINARY','DATE','TIMESTAMP','ARRAY<T>','MAP<K,V>','STRUCT<...>'],
+        trino: ['TINYINT','SMALLINT','INTEGER','BIGINT','REAL','DOUBLE','DECIMAL(10,2)','BOOLEAN','CHAR(1)','VARCHAR(255)','VARBINARY','DATE','TIME','TIMESTAMP','TIMESTAMP WITH TIME ZONE','JSON','UUID','IPADDRESS']
+      };
+      // 方言名のゆらぎ吸収
+      function normalizeDialect(d){
+        const x = (d||'').toLowerCase();
+        if (x==='transactsql') return 'tsql';
+        if (x==='postgres' || x==='postgresql') return 'postgresql';
+        if (x==='sqlserver' || x==='mssql') return 'mssql';
+        if (x==='plsql' || x==='oracle') return 'oracle';
+        return x||'sql';
+      }
+      function setTypeOptions(d){
+        const dl = document.getElementById('sqlTypes'); if(!dl) return;
+        const norm = normalizeDialect(d);
+        const list = TYPE_CATALOG[norm] || TYPE_CATALOG.sql;
+        dl.innerHTML = '';
+        list.forEach(v=>{
+          const opt = document.createElement('option');
+          opt.value = v;
+          dl.appendChild(opt);
+        });
+      }
+      // 既存の「型」入力（静的に置いてあるもの）にも list を付与しておく
+      document.querySelectorAll('input[placeholder^="型"]').forEach(el=> el.setAttribute('list','sqlTypes'));
+      // 方言セレクタを見つける（id 名が違っても検出）
+      function findDialectSelect(){
+        // 候補となる select を全て見て、方言らしい値を持つものを返す
+        const candidates = [...document.querySelectorAll('select')];
+        const KNOWN = new Set(Object.keys(TYPE_CATALOG));
+        for (const sel of candidates){
+          const vals = [...sel.querySelectorAll('option')].map(o=>normalizeDialect(o.value||o.textContent));
+          const hit = vals.some(v=> KNOWN.has(v));
+          if (hit) return sel;
+        }
+        return null;
+      }
+      const dialectSel = document.querySelector('#dialect') || document.querySelector('#formatDialect') || findDialectSelect();
+      setTypeOptions(dialectSel?.value || 'sql');
+      dialectSel?.addEventListener('change', (e)=> setTypeOptions(e.target.value));
+    })();
     // 下側コピー（output が <pre> でも <textarea> でも対応）
     $('#copyOutBottom')?.addEventListener('click', async ()=>{
       const el = $('#output');
@@ -417,7 +472,7 @@
 
     function addColRow(val='*'){
       const r = document.createElement('div'); r.className='row'; r.style.justifyContent='stretch';
-      const inp = document.createElement('input'); inp.type='text'; inp.placeholder='id  または  users.id AS user_id'; inp.value=val;
+      const inp = document.createElement('input'); inp.type='text'; inp.placeholder='カラム名'; inp.value=val;
       inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addColRow(''); }});
       r.appendChild(inp); r.appendChild(mkDelBtn()); colsGrid.appendChild(r); inp.focus();
     }
@@ -454,7 +509,7 @@
       const connSel = document.createElement('select'); connSel.className='cond-conn';
       ['AND','OR'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; connSel.appendChild(o); });
       connSel.value = conn;
-      const f = document.createElement('input'); f.type='text'; f.placeholder='フィールド（例：created_at）'; f.value=field;
+      const f = document.createElement('input'); f.type='text'; f.placeholder='フィールド名'; f.value=field;
       const o = document.createElement('select'); o.className='cond-op';
       ['=','!=','>','<','>=','<=','LIKE','IN','IS NULL','IS NOT NULL'].forEach(v=>{ const opt=document.createElement('option'); opt.value=v; opt.textContent=v; o.appendChild(opt); });
       o.value=op;
@@ -466,7 +521,7 @@
         if (v) return;
         v = document.createElement('input');
         v.type='text';
-        v.placeholder="値（例：'2025-01-01' / ('A','B'))";
+        v.placeholder="値";
         v.value = value;
         v.className='cond-val';
         v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addCondRow(target); }});
@@ -549,7 +604,7 @@
       ['AND','OR'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; connSel.appendChild(o); });
       connSel.value = conn;
 
-      const onL = document.createElement('input'); onL.type='text'; onL.placeholder='ON 左側（例：users.id）'; onL.value=l; onL.className='join-on-left';
+      const onL = document.createElement('input'); onL.type='text'; onL.placeholder='左側条件'; onL.value=l; onL.className='join-on-left';
 
       // JOIN の演算子を WHERE と同等に拡張
       const onOp = document.createElement('select'); onOp.className='join-on-op';
@@ -565,7 +620,7 @@
         if(onR) return;
         onR = document.createElement('input');
         onR.type='text';
-        onR.placeholder='ON 右側（例：orders.user_id / (1,2) / NULL）';
+        onR.placeholder='右側条件';
         onR.value = r;
         onR.className='join-on-right';
         rightWrap.appendChild(onR);
@@ -629,7 +684,7 @@
       const head = document.createElement('div'); head.className='row';
       const jtSel = document.createElement('select'); jtSel.className='join-type';
       ['INNER JOIN','LEFT OUTER JOIN','RIGHT OUTER JOIN','FULL OUTER JOIN'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; jtSel.appendChild(o); });
-      const table = document.createElement('input'); table.type='text'; table.placeholder='結合先テーブル（例：orders）'; table.className='join-table';
+      const table = document.createElement('input'); table.type='text'; table.placeholder='結合先テーブル名'; table.className='join-table';
       const addCondBtn = document.createElement('button'); addCondBtn.className='btn small'; addCondBtn.textContent='＋ 条件を追加';
       const gOpenBtn  = document.createElement('button'); gOpenBtn.className='btn small';  gOpenBtn.textContent='（ 開始';
       const gCloseBtn = document.createElement('button'); gCloseBtn.className='btn small'; gCloseBtn.textContent='） 終了';
@@ -655,8 +710,8 @@
     const insGrid = $('#insGrid');
     function addInsRow(){
       const r = document.createElement('div'); r.className = 'row';
-      const c = document.createElement('input'); c.type='text'; c.placeholder='列名（例：name）';
-      const v = document.createElement('input'); v.type='text'; v.placeholder="値（例：'Alice' / 123 / NOW()）";
+      const c = document.createElement('input'); c.type='text'; c.placeholder='列名';
+      const v = document.createElement('input'); v.type='text'; v.placeholder="値";
       v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addInsRow(); }});
       r.appendChild(c); r.appendChild(v); r.appendChild(mkDelBtn()); insGrid.appendChild(r); c.focus();
     }
@@ -666,8 +721,8 @@
     const uCondsGrid = $('#uCondsGrid');
     function addSetRow(){
       const r = document.createElement('div'); r.className='row';
-      const f = document.createElement('input'); f.type='text'; f.placeholder='フィールド（例：name）';
-      const v = document.createElement('input'); v.type='text'; v.placeholder="値（例：'Alice' / count+1）";
+      const f = document.createElement('input'); f.type='text'; f.placeholder='カラム名';
+      const v = document.createElement('input'); v.type='text'; v.placeholder="値";
       v.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ addSetRow(); }});
       r.appendChild(f); r.appendChild(v); r.appendChild(mkDelBtn()); setGrid.appendChild(r); f.focus();
     }
@@ -677,10 +732,10 @@
     const defGrid = $('#defGrid');
     function addDefRow(){
       const r = document.createElement('div'); r.className='row';
-      const name = document.createElement('input'); name.type='text'; name.placeholder='列名（例：id）';
-      const type = document.createElement('input'); type.type='text'; type.placeholder='型（例：INT / VARCHAR(255））';
+      const name = document.createElement('input'); name.type='text'; name.placeholder='列名';
+      const type = document.createElement('input'); type.type='text'; type.placeholder='型'; type.setAttribute('list','sqlTypes');
       const nullable = document.createElement('select'); ['NOT NULL','NULL'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; nullable.appendChild(o); });
-      const def = document.createElement('input'); def.type='text'; def.placeholder="DEFAULT（例：0 / 'N/A' / CURRENT_TIMESTAMP）";
+      const def = document.createElement('input'); def.type='text'; def.placeholder="DEFAULT";
       const pk = document.createElement('select'); ['','PRIMARY KEY'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v||'（PKなし）'; pk.appendChild(o); });
       r.appendChild(name); r.appendChild(type); r.appendChild(nullable); r.appendChild(def); r.appendChild(pk); r.appendChild(mkDelBtn()); defGrid.appendChild(r); name.focus();
     }
@@ -920,5 +975,34 @@
     });
 
   </script>
+  <!-- 型候補（datalist：選択も自由入力も可） -->
+  <datalist id="sqlTypes">
+    <option value="INT"></option>
+    <option value="INTEGER"></option>
+    <option value="BIGINT"></option>
+    <option value="SMALLINT"></option>
+    <option value="TINYINT"></option>
+    <option value="DECIMAL(10,2)"></option>
+    <option value="NUMERIC(10,2)"></option>
+    <option value="FLOAT"></option>
+    <option value="REAL"></option>
+    <option value="DOUBLE"></option>
+    <option value="BOOLEAN"></option>
+    <option value="BIT"></option>
+    <option value="CHAR(1)"></option>
+    <option value="NCHAR(10)"></option>
+    <option value="VARCHAR(255)"></option>
+    <option value="NVARCHAR(255)"></option>
+    <option value="TEXT"></option>
+    <option value="DATE"></option>
+    <option value="TIME"></option>
+    <option value="DATETIME"></option>
+    <option value="DATETIME2"></option>
+    <option value="TIMESTAMP"></option>
+    <option value="UUID"></option>
+    <option value="UNIQUEIDENTIFIER"></option>
+    <option value="JSON"></option>
+  </datalist>
+  <datalist id="sqlTypes"></datalist>
 </body>
 </html>
