@@ -505,17 +505,48 @@
       const conds = block.querySelector('.join-conds');
       const row = document.createElement('div');
       row.className = 'row join-cond-row';
+
       const connSel = document.createElement('select'); connSel.className='join-cond-conn';
       ['AND','OR'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; connSel.appendChild(o); });
       connSel.value = conn;
+
       const onL = document.createElement('input'); onL.type='text'; onL.placeholder='ON 左側（例：users.id）'; onL.value=l; onL.className='join-on-left';
+
+      // JOIN の演算子を WHERE と同等に拡張
       const onOp = document.createElement('select'); onOp.className='join-on-op';
-      ['=','!=','>','<','>=','<='].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; onOp.appendChild(o); });
+      ['=','!=','>','<','>=','<=','LIKE','IN','IS NULL','IS NOT NULL'].forEach(v=>{
+        const o=document.createElement('option'); o.value=v; o.textContent=v; onOp.appendChild(o);
+      });
       onOp.value = op;
-      const onR = document.createElement('input'); onR.type='text'; onR.placeholder='ON 右側（例：orders.user_id）'; onR.value=r; onR.className='join-on-right';
+
+      // 右辺入力は IS NULL/IS NOT NULL の時は DOM ごと消す
+      const rightWrap = document.createElement('span'); rightWrap.className='join-right-wrap';
+      let onR = null;
+      const createRight = ()=>{
+        if(onR) return;
+        onR = document.createElement('input');
+        onR.type='text';
+        onR.placeholder='ON 右側（例：orders.user_id / (1,2) / NULL）';
+        onR.value = r;
+        onR.className='join-on-right';
+        rightWrap.appendChild(onR);
+      };
+      const removeRight = ()=>{
+        if(!onR) return;
+        onR.remove(); onR=null;
+      };
+      const switchRightByOp = ()=>{
+        const noRight = (onOp.value==='IS NULL' || onOp.value==='IS NOT NULL');
+        if(noRight) removeRight(); else createRight();
+      };
+      onOp.addEventListener('change', switchRightByOp);
+      // 初期表示
+      switchRightByOp();
+
       const delBtn = document.createElement('button'); delBtn.className='btn small'; delBtn.textContent='－ 削除';
       delBtn.addEventListener('click', ()=>{ row.remove(); refreshJoinConnectors(block); });
-      row.appendChild(connSel); row.appendChild(onL); row.appendChild(onOp); row.appendChild(onR); row.appendChild(delBtn);
+
+      row.appendChild(connSel); row.appendChild(onL); row.appendChild(onOp); row.appendChild(rightWrap); row.appendChild(delBtn);
       conds.appendChild(row);
       refreshJoinConnectors(block);
       onL.focus();
@@ -648,11 +679,17 @@
         const rows = [...block.querySelectorAll('.join-cond-row')];
         const parts=[]; let first=true;
         for(const r of rows){
-          const l =(r.querySelector('.join-on-left')?.value||'').trim();
-          const op=(r.querySelector('.join-on-op')?.value||'=').trim();
-          const rr=(r.querySelector('.join-on-right')?.value||'').trim();
-          if(!l||!rr) continue;
-          const one = `${l} ${op} ${rr}`;
+          const l  =(r.querySelector('.join-on-left')?.value||'').trim();
+          const op =(r.querySelector('.join-on-op')?.value||'=').trim();
+          const rr =(r.querySelector('.join-on-right')?.value||'').trim();
+          if(!l) continue;
+          let one='';
+          if(op==='IS NULL' || op==='IS NOT NULL'){
+            one = `${l} ${op}`;
+          } else {
+            if(!rr) continue;
+            one = `${l} ${op} ${rr}`;
+          }
           if(first){ parts.push(one); first=false; }
           else {
             const conn=(r.querySelector('.join-cond-conn')?.value||'AND').trim();
