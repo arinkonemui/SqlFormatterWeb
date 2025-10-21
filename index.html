@@ -711,14 +711,16 @@
         .map(i=>i.value.trim()).filter(Boolean);
       const colPart = cols.length? cols.join(', ') : '*';
       let sql = `SELECT ${colPart}\nFROM ${table}`;
-      // JOIN（グルーピング対応：空行スキップ、先頭に接続詞付けない、括弧整合チェック）
+      // JOIN（グルーピング対応：空行スキップ、括弧直後は接続詞を出さない、括弧整合チェック）
       const joinBlocks = [...joinsGrid.querySelectorAll('.join-block')];
       joinBlocks.forEach(block=>{
         const jt = (block.querySelector('.join-type')?.value)||'INNER JOIN';
         const jtTable = (block.querySelector('.join-table')?.value||'').trim();
         if(!jtTable) return;
         const rows = [...block.querySelectorAll('.join-cond-row, .join-group.start, .join-group.end')];
-        const parts=[]; let first=true; let opened=0;
+        const parts=[]; let opened=0;
+        // 直前に接続詞が必要かどうか（= 直前が条件 or 閉じ括弧 のとき true / 直前が開き括弧 or 何も無いとき false）
+        let needConn = false;
         for(const r of rows){
           if (r.classList.contains('join-cond-row')){
             const l  =(r.querySelector('.join-on-left')?.value||'').trim();
@@ -728,18 +730,23 @@
             let one='';
             if(op==='IS NULL' || op==='IS NOT NULL'){ one = `${l} ${op}`; }
             else { if(!rr) continue; one = `${l} ${op} ${rr}`; }
-            if(first){ parts.push(one); first=false; }
-            else {
+            if(needConn){
               const conn=(r.querySelector('.join-cond-conn')?.value||'AND').trim();
               parts.push(`${conn} ${one}`);
+            }else{
+              parts.push(one);
             }
+            needConn = true; // 次からは接続詞が必要
           } else if (r.classList.contains('join-group') && r.classList.contains('start')){
             const conn=(r.querySelector('.join-cond-conn')?.value||'AND').trim();
-            if(first){ parts.push('('); first=false; } else { parts.push(`${conn} (`); }
+            if(needConn){ parts.push(`${conn} (`); } else { parts.push('('); }
             opened++;
+            needConn = false; // 開き括弧の直後なので接続詞は不要
           } else if (r.classList.contains('join-group') && r.classList.contains('end')){
             if (opened<=0){ alert('JOIN の括弧が未完了です。'); return; }
-            parts.push(')'); opened--;
+            parts.push(')');
+            opened--;
+            needConn = true; // 閉じ括弧の後は接続詞が必要
           }
         }
         if (opened!==0){ alert('JOIN の括弧が未完了です。'); return; }
@@ -799,13 +806,14 @@
       return sql + ';';
     }
 
-    // 共通：WHERE 句を組み立て（グルーピング対応）
+    // 共通：WHERE 句を組み立て（グルーピング対応・「(」直後は接続詞を付けない）
     // 戻り値： ''（条件なし） / 'expr ...'（成功） / null（括弧不整合）
     function buildWhereClause(container){
       const rows = [...container.querySelectorAll('.cond-row, .group-row.start, .group-row.end')];
       const parts = [];
       let opened = 0;
-      let first = true;
+      // 直前が条件 or 「)」なら接続詞が必要、直前が「(」または先頭なら不要
+      let needConn = false;
       for (const r of rows){
         if (r.classList.contains('cond-row')){
           const f =(r.querySelector('input[type="text"]')?.value||'').trim();
@@ -816,26 +824,29 @@
           if (o==='IS NULL' || o==='IS NOT NULL') expr = `${f} ${o}`;
           else if (v) expr = `${f} ${o} ${v}`;
           if(!expr) continue;
-          if(first){ parts.push(expr); first=false; }
-          else {
+          if (needConn){
             const conn=(r.querySelector('.cond-conn')?.value||'AND').trim();
             parts.push(`${conn} ${expr}`);
+          } else {
+            parts.push(expr);
           }
+          needConn = true; // 次は接続詞が必要
         } else if (r.classList.contains('group-row') && r.classList.contains('start')){
           const conn=(r.querySelector('.cond-conn')?.value||'AND').trim();
-          if(first){ parts.push('('); first=false; }
-          else { parts.push(`${conn} (`); }
+          if (needConn) parts.push(`${conn} (`); else parts.push('(');
           opened++;
+          needConn = false; // 「(」直後は接続詞不要
         } else if (r.classList.contains('group-row') && r.classList.contains('end')){
           if (opened<=0) return null; // 閉じ過ぎ
           parts.push(')');
           opened--;
+          needConn = true; // 「)」の後は接続詞が必要
         }
       }
       if (opened!==0) return null; // 未クローズ
       return parts.join(' ');
     }
-
+    
     function buildCreateSQL(){
       const table = ($('#b_table').value||'').trim();
       if(!table) return '';
