@@ -222,6 +222,9 @@
       <div style="margin-top:10px">
         <div class="muted">出力</div>
         <pre id="output" class="out"></pre>
+        <div class="row" style="margin-top:6px">
+          <button class="btn" id="copyOutBottom">コピー</button>
+        </div>
       </div>
 
       <div class="footer">
@@ -352,6 +355,12 @@
     $('#minifyBtn').addEventListener('click', minifyNow);
     $('#copyBtn').addEventListener('click', async ()=>{
       const text = output.textContent || '';
+      try{ await navigator.clipboard.writeText(text); alert('コピーしました'); } catch{ alert('コピーに失敗しました'); }
+    });
+    // 下側コピー（output が <pre> でも <textarea> でも対応）
+    $('#copyOutBottom')?.addEventListener('click', async ()=>{
+      const el = $('#output');
+      const text = el?.value ?? el?.textContent ?? '';
       try{ await navigator.clipboard.writeText(text); alert('コピーしました'); } catch{ alert('コピーに失敗しました'); }
     });
     $('#clearBtn').addEventListener('click', ()=>{
