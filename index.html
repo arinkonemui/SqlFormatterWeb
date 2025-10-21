@@ -355,6 +355,110 @@
       const text = output.textContent || '';
       try{ await navigator.clipboard.writeText(text); alert('コピーしました'); } catch{ alert('コピーに失敗しました'); }
     });
+        // ===== DEFAULT 候補：方言と型に応じて datalist を差し替え =====
+    function normalizeDialect(d){
+      const x=(d||'').toLowerCase();
+      if(x==='postgres') return 'postgresql';
+      if(x==='transactsql') return 'tsql';
+      if(x==='sqlserver' || x==='mssql') return 'tsql';
+      if(x==='plsql' || x==='oracle') return 'oracle';
+      return x||'sql';
+    }
+    function inferTypeCategory(typeStr){
+      const t=(typeStr||'').toLowerCase().replace(/\s+/g,'');
+      // 代表的マッピング（必要に応じて拡張可）
+      if(/^(int|tinyint|smallint|mediumint|bigint|integer|serial|bigserial|number|numeric|decimal|money)/.test(t)) return 'number';
+      if(/^(float|double|real|binary_float|binary_double)/.test(t)) return 'float';
+      if(/^(bool|boolean|bit)/.test(t)) return 'bool';
+      if(/^(char|nchar|varchar|nvarchar|text|clob|string)/.test(t)) return 'string';
+      if(/^(json|jsonb|super)/.test(t)) return 'json';
+      if(/^(uuid|uniqueidentifier)/.test(t)) return 'uuid';
+      if(/^(date)$/.test(t)) return 'date';
+      if(/^(time)/.test(t)) return 'time';
+      if(/^(timestamp|datetime|smalldatetime|timestamptz|datetime2)/.test(t)) return 'datetime';
+      if(/^(blob|bytea|varbinary|binary)/.test(t)) return 'binary';
+      return 'unknown';
+    }
+    function candidatesByDialectAndType(dialect, typeStr){
+      const d = normalizeDialect(dialect);
+      const cat = inferTypeCategory(typeStr);
+      const baseCommon = ['NULL']; // どの型でもあり得る
+      const out = [...baseCommon];
+      // 型カテゴリ別の候補
+      if(cat==='number' || cat==='float'){ out.push('0','1','-1'); }
+      if(cat==='bool'){
+        if(d==='postgresql' || d==='trino' || d==='redshift' || d==='bigquery' || d==='oracle'){ out.push('TRUE','FALSE'); }
+        else { out.push('1','0','TRUE','FALSE'); } // MySQL/SQLite/T-SQL は 1/0 も一般的
+      }
+      if(cat==='string'){ out.push("''","'N/A'"); }
+      if(cat==='json'){ out.push("'{}'","'[]'"); }
+      if(cat==='uuid'){
+        if(d==='postgresql'){ out.push('gen_random_uuid()','uuid_generate_v4()'); }
+        else if(d==='tsql'){ out.push('NEWID()'); }
+        else if(d==='mysql'){ out.push('UUID()'); }
+        else { out.push('UUID()'); }
+      }
+      if(cat==='date'){
+        if(d==='oracle'){ out.push('SYSDATE','CURRENT_DATE'); }
+        else if(d==='tsql'){ out.push('GETDATE()','CAST(GETDATE() AS DATE)','CURRENT_DATE'); }
+        else if(d==='mysql'){ out.push('CURRENT_DATE','CURDATE()'); }
+        else { out.push('CURRENT_DATE'); }
+      }
+      if(cat==='time'){
+        if(d==='mysql'){ out.push('CURRENT_TIME','CURTIME()'); }
+        else { out.push('CURRENT_TIME'); }
+      }
+      if(cat==='datetime'){
+        if(d==='tsql'){ out.push('GETDATE()','SYSDATETIME()','CURRENT_TIMESTAMP'); }
+        else if(d==='oracle'){ out.push('SYSTIMESTAMP','CURRENT_TIMESTAMP'); }
+        else if(d==='mysql'){ out.push('CURRENT_TIMESTAMP','NOW()'); }
+        else { out.push('CURRENT_TIMESTAMP','NOW()'); }
+      }
+      // unknown かつ文字列っぽいときの無難候補
+      if(cat==='unknown'){ out.push("''"); }
+      // 重複除去
+      return [...new Set(out)];
+    }
+    function findDialectSelect(){
+      // 既存の方言セレクタを推測（idが #dialect / #formatDialect でない場合も拾う）
+      const knownIds = ['#dialect','#formatDialect'];
+      for(const id of knownIds){ const el=document.querySelector(id); if(el) return el; }
+      const sels=[...document.querySelectorAll('select')];
+      const probe = new Set(['sql','mysql','postgresql','sqlite','tsql','oracle','mariadb','bigquery','redshift','trino','hive','spark']);
+      for(const s of sels){
+        const vals=[...s.querySelectorAll('option')].map(o=>(o.value||o.textContent||'').toLowerCase());
+        if(vals.some(v=>probe.has(v))) return s;
+      }
+      return null;
+    }
+    function updateDefaultOptionsForRow(row){
+      const dl = document.getElementById('defaultOptions'); if(!dl) return;
+      const typeInput = row.querySelector('input[placeholder^="型"]');
+      const dialectSel = findDialectSelect();
+      const dialectVal = dialectSel?.value || 'sql';
+      const typeVal = typeInput?.value || '';
+      const list = candidatesByDialectAndType(dialectVal, typeVal);
+      dl.innerHTML = '';
+      list.forEach(v => { const o=document.createElement('option'); o.value=v; dl.appendChild(o); });
+    }
+    // 既存（静的に置かれている）DEFAULT 入力にもフック
+    (function attachDefaultHooksInitial(){
+      const rows = document.querySelectorAll('#defGrid .row');
+      rows.forEach(r=>{
+        const def = r.querySelector('input[placeholder^="DEFAULT"]');
+        const typ = r.querySelector('input[placeholder^="型"]');
+        if(def){ def.setAttribute('list','defaultOptions'); def.addEventListener('focus', ()=>updateDefaultOptionsForRow(r)); }
+        if(typ){ typ.addEventListener('input', ()=>updateDefaultOptionsForRow(r)); }
+      });
+      // 方言切り替え時、フォーカスしている DEFAULT 入力があれば更新
+      const dialectSel = findDialectSelect();
+      dialectSel?.addEventListener('change', ()=>{
+        const active = document.activeElement;
+        if(active && active.matches('input[list="defaultOptions"]')){
+          const row = active.closest('.row'); if(row) updateDefaultOptionsForRow(row);
+        }
+      });
+    })();
     // ---- 型候補（datalist）を方言に連動させる ----
     (function(){
       // sql-formatter の方言想定（足りなくてもフォールバックします）
@@ -751,9 +855,11 @@
       const name = document.createElement('input'); name.type='text'; name.placeholder='列名';
       const type = document.createElement('input'); type.type='text'; type.placeholder='型'; type.setAttribute('list','sqlTypes');
       const nullable = document.createElement('select'); ['NOT NULL','NULL'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; nullable.appendChild(o); });
-      const def = document.createElement('input'); def.type='text'; def.placeholder="DEFAULT";
+      const def = document.createElement('input'); def.type='text'; def.placeholder="DEFAULT"; def.setAttribute('list','defaultOptions');
       const pk = document.createElement('select'); ['','PRIMARY KEY'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v||'（PKなし）'; pk.appendChild(o); });
       r.appendChild(name); r.appendChild(type); r.appendChild(nullable); r.appendChild(def); r.appendChild(pk); r.appendChild(mkDelBtn()); defGrid.appendChild(r); name.focus();
+      type.addEventListener('input', ()=> updateDefaultOptionsForRow(r));
+      def.addEventListener('focus', ()=> updateDefaultOptionsForRow(r));
     }
 
     // ボタン紐付け
@@ -1020,5 +1126,6 @@
     <option value="JSON"></option>
   </datalist>
   <datalist id="sqlTypes"></datalist>
+  <datalist id="defaultOptions"></datalist>
 </body>
 </html>
