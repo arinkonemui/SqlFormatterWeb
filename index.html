@@ -403,23 +403,30 @@
     // WHERE/UPDATE 条件：先頭要素の AND/OR を隠す（条件行とグループ開始行が対象）
     function refreshCondConnectors(container){
       const items = [...container.querySelectorAll('.cond-row, .group-row.start, .group-row.end')];
+      // 最初に実際の式（条件/開始/終了）のインデックスを取得
       let firstIndex = -1;
       for (let i=0;i<items.length;i++){
         const it = items[i];
-        const hasExpr = it.classList.contains('cond-row') || it.classList.contains('start') || it.classList.contains('end');
-        if(!hasExpr) continue;
-        firstIndex = i; break;
+        if (it.classList.contains('cond-row') || it.classList.contains('start') || it.classList.contains('end')) {
+          firstIndex = i; break;
+        }
       }
+      // 直前が（開始）かどうかで接続詞の表示可否を決定
+      let prevWasStart = false;
       items.forEach((it,i)=>{
         const conn = it.querySelector?.('.cond-conn');
-        // グループ「終了」には接続詞を常に表示しない
-        if (it.classList.contains('end') && conn) conn.style.display = 'none';
-        else if (conn) conn.style.display = (i===firstIndex ? 'none' : 'inline-block');
+        if (!conn) { prevWasStart = it.classList.contains('start'); return; }
+        // 終了行は常に非表示
+        if (it.classList.contains('end')) { conn.style.display='none'; prevWasStart=false; return; }
+        // 先頭行は非表示
+        if (i===firstIndex) { conn.style.display='none'; prevWasStart = it.classList.contains('start'); return; }
+        // 直前が（開始）だったら非表示、それ以外は表示
+        conn.style.display = prevWasStart ? 'none' : 'inline-block';
+        prevWasStart = it.classList.contains('start');
       });
     }
 
     // 条件 1 行を追加（target は condsGrid / uCondsGrid のいずれか）
-    
     function addCondRow(target=condsGrid, {field='',op='=',value='',conn='AND'}={}){
       const r = document.createElement('div'); r.className='row cond-row';
       const connSel = document.createElement('select'); connSel.className='cond-conn';
@@ -497,14 +504,16 @@
       let firstIdx = -1;
       for (let i=0;i<items.length;i++){
         const it = items[i];
-        const isExpr = it.classList.contains('join-cond-row') || it.classList.contains('start') || it.classList.contains('end');
-        if(!isExpr) continue;
-        firstIdx = i; break;
+        if (it.classList.contains('join-cond-row') || it.classList.contains('start') || it.classList.contains('end')) { firstIdx = i; break; }
       }
+      let prevWasStart = false;
       items.forEach((it,i)=>{
         const conn = it.querySelector?.('.join-cond-conn');
-        if (it.classList.contains('end')) { if(conn) conn.style.display='none'; }
-        else if (conn) { conn.style.display = (i===firstIdx ? 'none' : 'inline-block'); }
+        if (!conn) { prevWasStart = it.classList.contains('start'); return; }
+        if (it.classList.contains('end')) { conn.style.display='none'; prevWasStart=false; return; }
+        if (i===firstIdx) { conn.style.display='none'; prevWasStart = it.classList.contains('start'); return; }
+        conn.style.display = prevWasStart ? 'none' : 'inline-block';
+        prevWasStart = it.classList.contains('start');
       });
     }
 
@@ -846,7 +855,7 @@
       if (opened!==0) return null; // 未クローズ
       return parts.join(' ');
     }
-    
+
     function buildCreateSQL(){
       const table = ($('#b_table').value||'').trim();
       if(!table) return '';
