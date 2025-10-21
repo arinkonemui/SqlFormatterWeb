@@ -592,6 +592,22 @@
         conn.style.display = prevWasStart ? 'none' : 'inline-block';
         prevWasStart = it.classList.contains('start');
       });
+
+      // ▼ 先頭の「条件行」の左にだけ ON ラベルを表示（表示専用）
+      // いったん既存の ON チップを全削除してから、先頭の条件行に付け直す
+      block.querySelectorAll('.on-chip').forEach(n => n.remove());
+      const firstCondRow = items.find(el => el.classList.contains('join-cond-row'));
+      if (firstCondRow) {
+        const chip = document.createElement('span');
+        chip.textContent = 'ON';
+        chip.className = 'on-chip';
+        chip.style.padding = '6px 8px';
+        chip.style.border = '1px solid #334155';
+        chip.style.borderRadius = '8px';
+        chip.style.marginRight = '4px';
+        // 行の先頭に差し込む（先頭の AND/OR セレクタは先頭行では非表示になる想定）
+        firstCondRow.insertBefore(chip, firstCondRow.firstChild);
+      }
     }
 
     // JOIN の ON 条件 1 行を追加（AND/OR セレクタ付き）
