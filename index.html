@@ -6,7 +6,7 @@
   <title>SQL整形ツール（高速・無料・ブラウザだけ）</title>
   <meta name="description" content="SQLをブラウザだけでサッと整形・作成。MySQL/PostgreSQL/SQLite/SQL Server対応。データ送信なし＆完全無料。" />
   <style>
-    :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --fg:#e5e7eb; --acc:#22d3ee; }
+    :root { --bg:#111827; --card:#1a2335; --muted:#94a3b8; --fg:#e5e7eb; --acc:#22d3ee; }
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
     .wrap{max-width:1100px;margin:0 auto;padding:24px}
@@ -31,6 +31,23 @@
     /* タブ用（アクティブ強調） */
     .btn.tab{border-radius:9999px}
     .btn.tab.active{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:700}
+    /* フッターを他カードと同じトーン＆幅に */
+    footer.site-footer.card { /* .card を併用して見た目を統一 */
+      padding: 10px 12px;
+    }
+    footer.site-footer .footer-nav{
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      gap:18px;                 /* 3リンクの間隔 */
+    }
+    footer.site-footer .footer-nav a{
+      color: var(--fg);         /* 青リンクより視認性を上げる */
+      text-decoration: underline;
+    }
+    footer.site-footer .footer-nav .sep{
+      opacity:.45;              /* 区切りスラッシュは控えめに */
+    }
   </style>
   <!-- sql-formatter（UMD） -->
   <script src="https://unpkg.com/sql-formatter/dist/sql-formatter.min.js"></script>
@@ -40,6 +57,21 @@
     <div class="row" style="justify-content:space-between">
       <div class="title">SQL整形ツール</div>
       <div class="badge">ローカル実行 / データ送信なし</div>
+    </div>
+    <!-- ツール概要（申請前チェック用の簡易説明） -->
+    <div class="card" style="margin-top:10px">
+      <div class="muted">このサイトについて</div>
+      <div style="margin-top:6px">
+        <p style="margin:0 0 6px">
+          本ツールは、ブラウザ内のみで SQL を整形・作成する無料サービスです。入力内容はサーバへ送信しません。
+        </p>
+        <p style="margin:0 0 6px">
+          対応方言：MySQL / PostgreSQL / SQLite / SQL Server (T-SQL)
+        </p>
+        <p class="hint" style="margin:0">
+          免責：生成・整形結果の正確性は保証しません。ご利用前に内容をご確認ください。
+        </p>
+      </div>
     </div>
 
     <div class="card" style="margin-top:14px">
@@ -235,10 +267,14 @@
       <div class="muted">プライバシー</div>
       このサイトは入力内容をサーバに送信しません。ブラウザ内でのみ処理します。広告を表示する場合、第三者のCookie等が利用されることがあります。
     </div>
-    <footer style="margin-top:32px;font-size:12px;text-align:center">
-      <a href="https://forms.gle/Ay2dVBVV41A2fJQ27" target="_blank" rel="noopener">お問い合わせ</a>
-      &nbsp;/&nbsp;
-      <a href="/privacy.html">プライバシーポリシー</a>
+    <footer class="site-footer card" style="margin-top:32px;font-size:12px">
+      <nav class="footer-nav">
+        <a href="/">トップ</a>
+        <span class="sep">/</span>
+        <a href="https://forms.gle/Ay2dVBVV41A2fJQ27" target="_blank" rel="noopener">お問い合わせ</a>
+        <span class="sep">/</span>
+        <a href="/privacy.html">プライバシーポリシー</a>
+      </nav>
     </footer>
   </div>
 
