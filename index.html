@@ -96,11 +96,6 @@
           <input id="indent" type="number" min="2" max="8" step="1" value="2" />
         </label>
         <label><input id="uppercase" type="checkbox" /> キーワードを大文字に</label>
-
-        <button class="btn primary" id="formatBtn">整形</button>
-        <button class="btn" id="minifyBtn">ミニファイ</button>
-        <button class="btn" id="copyBtn">コピー</button>
-        <button class="btn" id="clearBtn">クリア</button>
       </div>
 
       <!-- 方言ヒント -->
@@ -253,6 +248,12 @@
       <div style="margin-top:10px">
         <div class="muted">入力（SQL）</div>
         <textarea id="input" placeholder="SELECT * from users where id=1 AND status='active' order by created_at desc;"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="btn primary" id="formatBtn">整形する</button>
+          <button class="btn" id="minifyBtn">ミニファイ</button>
+          <button class="btn" id="copyBtn">コピー</button>
+          <button class="btn" id="clearBtn">クリア</button>
+        </div>
       </div>
 
       <div style="margin-top:10px">
