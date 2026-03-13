@@ -311,6 +311,100 @@
       return s;
     }
 
+    // ---- sp_executesql 対応 ----
+    // N'...' 文字列を抽出（'' エスケープ対応）
+    function extractNString(sql, startIndex) {
+      // startIndex は N の位置。sql[startIndex]==='N', sql[startIndex+1]==="'"
+      let i = startIndex + 2; // N' の次から
+      let content = '';
+      while (i < sql.length) {
+        if (sql[i] === "'") {
+          if (i + 1 < sql.length && sql[i + 1] === "'") {
+            content += "''";
+            i += 2;
+          } else {
+            return { content, endIndex: i };
+          }
+        } else {
+          content += sql[i];
+          i++;
+        }
+      }
+      return null; // 閉じられていない
+    }
+
+    // カンマで分割するが N'...' / '...' 内のカンマは無視
+    function splitRespectingNStrings(text) {
+      const parts = [];
+      let current = '';
+      let i = 0;
+      while (i < text.length) {
+        if (((text[i] === 'N' || text[i] === 'n') && text[i + 1] === "'") || text[i] === "'") {
+          // 文字列リテラルの開始
+          if (text[i] !== "'") { current += text[i]; i++; } // N を追加
+          current += text[i]; i++; // 開き ' を追加
+          while (i < text.length) {
+            if (text[i] === "'" && i + 1 < text.length && text[i + 1] === "'") {
+              current += "''"; i += 2;
+            } else if (text[i] === "'") {
+              current += "'"; i++;
+              break;
+            } else {
+              current += text[i]; i++;
+            }
+          }
+        } else if (text[i] === ',') {
+          parts.push(current.trim());
+          current = '';
+          i++;
+        } else {
+          current += text[i];
+          i++;
+        }
+      }
+      if (current.trim()) parts.push(current.trim());
+      return parts;
+    }
+
+    // EXEC sp_executesql を検出し、内部SQLを整形して再組み立て
+    function handleSpExecuteSql(rawSql, baseOpt) {
+      const sql = rawSql.replace(/\r\n?/g, '\n').replace(/\u3000/g, ' ').replace(/\t+/g, ' ');
+      const match = sql.match(/^(\s*EXEC(?:UTE)?\s+sp_executesql\s+)N'/i);
+      if (!match) return null;
+
+      const nStart = match[1].length; // N' の N の位置
+      const extracted = extractNString(sql, nStart);
+      if (!extracted) return null;
+
+      // 内部SQLを取得し '' → ' に変換して整形
+      let innerSql = extracted.content.replace(/''/g, "'");
+      innerSql = preprocessSql(innerSql);
+      let formatted;
+      try {
+        formatted = window.sqlFormatter.format(innerSql, { ...baseOpt, language: 'tsql' });
+      } catch {
+        return null; // 整形失敗時は通常処理にフォールバック
+      }
+      // ' → '' に戻す
+      const reEscaped = formatted.replace(/'/g, "''");
+
+      // 残りの引数を取得
+      const afterFirstNString = sql.substring(extracted.endIndex + 1);
+      const argsText = afterFirstNString.replace(/^\s*,\s*/, '');
+      const args = argsText.trim() ? splitRespectingNStrings(argsText) : [];
+
+      // 再組み立て
+      const indentStr = ' '.repeat(baseOpt.tabWidth);
+      const execKeyword = baseOpt.keywordCase === 'upper' ? 'EXEC SP_EXECUTESQL' : 'EXEC sp_executesql';
+
+      let result = execKeyword + '\n';
+      result += indentStr + "N'" + reEscaped + "\n" + indentStr + "'";
+      for (const arg of args) {
+        result += ',\n' + indentStr + arg.trim();
+      }
+      return result;
+    }
+
     // ---- 未完了（括弧）チェック：開き > 閉じ なら未完了
     function hasUnbalancedParens(str) {
       try {
@@ -346,16 +440,23 @@
 
     function formatNow(){
       const sql = input.value || '';
-      const pre = preprocessSql(sql);
-      if (hasUnbalancedParens(pre)) {
-        output.textContent = 'SQL が未完了です。（カッコ閉じ忘れ等）';
-        return;
-      }
       const baseOpt = {
         tabWidth: Math.max(2, Math.min(8, Number(indent.value) || 2)),
         keywordCase: uppercase.checked ? 'upper' : 'preserve',
         linesBetweenQueries: 1,
       };
+      // --- sp_executesql 対応 ---
+      const spResult = handleSpExecuteSql(sql, baseOpt);
+      if (spResult !== null) {
+        output.textContent = spResult;
+        return;
+      }
+      // --- ここまで ---
+      const pre = preprocessSql(sql);
+      if (hasUnbalancedParens(pre)) {
+        output.textContent = 'SQL が未完了です。（カッコ閉じ忘れ等）';
+        return;
+      }
       const primary = dialect.value;
       try {
         const res = window.sqlFormatter.format(pre, { ...baseOpt, language: primary });
