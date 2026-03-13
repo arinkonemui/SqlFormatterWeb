@@ -6,47 +6,49 @@
   <title>SQL整形ツール（高速・無料・ブラウザだけ）</title>
   <meta name="description" content="SQLをブラウザだけでサッと整形・作成。MySQL/PostgreSQL/SQLite/SQL Server対応。データ送信なし＆完全無料。" />
   <style>
-    :root { --bg:#111827; --card:#1a2335; --muted:#94a3b8; --fg:#e5e7eb; --acc:#22d3ee; }
+    :root { --bg:#f8fafc; --card:#ffffff; --muted:#666666; --fg:#1a1a1a; --acc:#2563eb; }
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
     .wrap{max-width:1100px;margin:0 auto;padding:24px}
     .title{font-size:24px;font-weight:800;letter-spacing:.5px}
-    .card{background:var(--card);border:1px solid #1f2937;border-radius:14px;padding:16px;box-shadow:0 10px 30px rgb(0 0 0 / .25)}
+    .card{background:var(--card);border:1px solid #e5e7eb;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
     .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
     .row > *{margin:4px 0}
-    select, input[type="number"], input[type="checkbox"], input[type="text"]{background:#0b1220;border:1px solid #243045;color:var(--fg);border-radius:10px;padding:8px 10px}
+    select, input[type="number"], input[type="checkbox"], input[type="text"]{background:#f7f9ff;border:1px solid #d0d5dd;color:var(--fg);border-radius:10px;padding:8px 10px}
     input[type="text"]{min-width:180px}
-    textarea{width:100%;min-height:180px;background:#0b1220;border:1px solid #243045;border-radius:12px;color:var(--fg);padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    textarea{width:100%;min-height:180px;background:#f7f9ff;border:1px solid #d0d5dd;border-radius:12px;color:var(--fg);padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
     .out{min-height:220px;white-space:pre;overflow:auto}
-    .btn{background:#0b1220;border:1px solid #334155;color:var(--fg);padding:10px 14px;border-radius:10px;cursor:pointer}
-    .btn:hover{border-color:#475569}
-    .btn.primary{border-color:#0ea5b7;background:linear-gradient(180deg,#0ea5b7,#0b7782);font-weight:700}
+    .btn{background:#f7f9ff;border:1px solid #d0d5dd;color:var(--fg);padding:10px 14px;border-radius:10px;cursor:pointer}
+    .btn:hover{border-color:#2563eb;color:#2563eb}
+    .btn.primary{border-color:#2563eb;background:#2563eb;color:#fff;font-weight:700}
+    .btn.primary:hover{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
     .btn.small{padding:6px 10px;border-radius:8px}
     .muted{color:var(--muted);font-size:13px}
-    .footer{margin-top:18px;color:#9ca3af;font-size:12px}
-    .badge{display:inline-block;padding:2px 8px;border:1px solid #334155;border-radius:999px;font-size:12px;color:#cbd5e1}
-    .hint{font-size:12px;color:#a1a1aa}
-    .danger{border-color:#ef4444 !important;color:#fecaca !important}
+    .footer{margin-top:18px;color:#666;font-size:12px}
+    .badge{display:inline-block;padding:2px 8px;border:1px solid #d0d5dd;border-radius:999px;font-size:12px;color:#555}
+    .hint{font-size:12px;color:#888}
+    .danger{border-color:#ef4444 !important;color:#dc2626 !important}
     .vstack{display:flex;flex-direction:column;gap:10px}
     /* タブ用（アクティブ強調） */
     .btn.tab{border-radius:9999px}
     .btn.tab.active{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:700}
     /* フッターを他カードと同じトーン＆幅に */
-    footer.site-footer.card { /* .card を併用して見た目を統一 */
+    footer.site-footer.card {
       padding: 10px 12px;
+      background:#f5f5f5;
     }
     footer.site-footer .footer-nav{
       display:flex;
       justify-content:center;
       align-items:center;
-      gap:18px;                 /* 3リンクの間隔 */
+      gap:18px;
     }
     footer.site-footer .footer-nav a{
-      color: var(--fg);         /* 青リンクより視認性を上げる */
+      color: #555;
       text-decoration: underline;
     }
     footer.site-footer .footer-nav .sep{
-      opacity:.45;              /* 区切りスラッシュは控えめに */
+      opacity:.45;
     }
   </style>
   <!-- sql-formatter（UMD） -->
@@ -707,7 +709,7 @@
       const connSel = document.createElement('select'); connSel.className='cond-conn';
       ['AND','OR'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; connSel.appendChild(o); });
       connSel.value = conn;
-      const label = document.createElement('span'); label.textContent = '('; label.style.padding='6px 8px'; label.style.border='1px solid #334155'; label.style.borderRadius='8px';
+      const label = document.createElement('span'); label.textContent = '('; label.style.padding='6px 8px'; label.style.border='1px solid #d0d5dd'; label.style.borderRadius='8px';
       const del = document.createElement('button'); del.className='btn small'; del.textContent='－ 削除';
       del.addEventListener('click', ()=>{ r.remove(); refreshCondConnectors(target); });
       r.appendChild(connSel); r.appendChild(label); r.appendChild(del);
@@ -718,7 +720,7 @@
     // ） 終了 行を追加（接続詞は持たない）
     function addCondGroupEnd(target=condsGrid){
       const r = document.createElement('div'); r.className='row group-row end';
-      const spacer = document.createElement('span'); spacer.textContent = ')'; spacer.style.padding='6px 8px'; spacer.style.border='1px solid #334155'; spacer.style.borderRadius='8px';
+      const spacer = document.createElement('span'); spacer.textContent = ')'; spacer.style.padding='6px 8px'; spacer.style.border='1px solid #d0d5dd'; spacer.style.borderRadius='8px';
       const del = document.createElement('button'); del.className='btn small'; del.textContent='－ 削除';
       del.addEventListener('click', ()=>{ r.remove(); refreshCondConnectors(target); });
       r.appendChild(spacer); r.appendChild(del);
@@ -753,7 +755,7 @@
         chip.textContent = 'ON';
         chip.className = 'on-chip';
         chip.style.padding = '6px 8px';
-        chip.style.border = '1px solid #334155';
+        chip.style.border = '1px solid #d0d5dd';
         chip.style.borderRadius = '8px';
         chip.style.marginRight = '4px';
         // 行の先頭に差し込む（先頭の AND/OR セレクタは先頭行では非表示になる想定）
@@ -820,7 +822,7 @@
     const connSel = document.createElement('select'); connSel.className='join-cond-conn';
     ['AND','OR'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; connSel.appendChild(o); });
     connSel.value = conn;
-    const chip = document.createElement('span'); chip.textContent='('; chip.style.padding='6px 8px'; chip.style.border='1px solid #334155'; chip.style.borderRadius='8px';
+    const chip = document.createElement('span'); chip.textContent='('; chip.style.padding='6px 8px'; chip.style.border='1px solid #d0d5dd'; chip.style.borderRadius='8px';
     const del = document.createElement('button'); del.className='btn small'; del.textContent='－ 削除';
     del.addEventListener('click', ()=>{ row.remove(); refreshJoinConnectors(block); });
     row.appendChild(connSel); row.appendChild(chip); row.appendChild(del);
@@ -832,7 +834,7 @@
   function addJoinGroupEnd(block){
     const conds = block.querySelector('.join-conds');
     const row = document.createElement('div'); row.className='row join-group end';
-    const chip = document.createElement('span'); chip.textContent=')'; chip.style.padding='6px 8px'; chip.style.border='1px solid #334155'; chip.style.borderRadius='8px';
+    const chip = document.createElement('span'); chip.textContent=')'; chip.style.padding='6px 8px'; chip.style.border='1px solid #d0d5dd'; chip.style.borderRadius='8px';
     const del = document.createElement('button'); del.className='btn small'; del.textContent='－ 削除';
     del.addEventListener('click', ()=>{ row.remove(); refreshJoinConnectors(block); });
     row.appendChild(chip); row.appendChild(del);
@@ -845,7 +847,7 @@
       const block = document.createElement('div');
       block.className = 'card join-block';
       block.style.padding = '10px';
-      block.style.background = '#0b1220';
+      block.style.background = '#f5f5f5';
       block.style.border = '1px solid #243045';
 
       const head = document.createElement('div'); head.className='row';
