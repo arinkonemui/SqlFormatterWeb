@@ -674,6 +674,11 @@
       try{ await navigator.clipboard.writeText(text); alert('コピーしました'); } catch{ alert('コピーに失敗しました'); }
     });
     $('#clearBtn').addEventListener('click', ()=>{
+      input.value = '';
+      output.textContent = '';
+    });
+
+    $('#b_clear').addEventListener('click', ()=>{
       // SELECT
       $('#b_table').value = '';
       $('#b_order_field').value=''; $('#b_order_dir').value='ASC'; $('#b_limit').value='';
